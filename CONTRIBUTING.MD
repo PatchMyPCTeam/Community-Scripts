@@ -22,3 +22,4 @@ The Patch My PC team may create alternate names for overall fixes, or changes to
 
 When submitting a pull request you will be required to meet the pull request template. Additionally, the pull request will require approval from at least two members of the PMPC team to merged. This is to help ensure no one misses anythign and that nothing malicious is uploaded, intentionally or otherwise. When you create a pull request you will be provided with a template and a checklist to follow.
 
+This checklist must be filled out and all changes wil require approval from two reviewers.
