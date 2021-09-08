@@ -12,7 +12,7 @@ Patch My PC provides scripts, macro, and other code examples for illustration on
 
 ## Templates
 
-To ensure scripts can easily be read, understood and properly curated Patch My PC has provided templates in the template directory. When submitting a script to the repository, you must, create a folder with an understandble unique name. As an example, if you wanted to submit a pre-install script, you would create a folder, and associated resources in the Install\Pre-Install\ directory.
+To ensure scripts can easily be read, understood and properly curated Patch My PC has provided templates in the template directory. When submitting a script to the repository, you must, create a folder with an understandable unique name. As an example, if you wanted to submit a pre-install script, you would create a folder, and associated resources in the Install\Pre-Install\ directory.
 
 Inside the folder you must provide an easy to digest readme in markdown format which includes instructions on how to use the associated scripts and or files. We do not accept binaries.
 
