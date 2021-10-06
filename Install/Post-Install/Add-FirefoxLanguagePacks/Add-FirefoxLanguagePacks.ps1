@@ -1,4 +1,3 @@
-
 <#
 .SYNOPSIS
     Deploy additional language packs to Firefox install directory
@@ -6,7 +5,9 @@
     This post install script will create the necessary directory for Firefox language packs, copy the packs to that folder and rename them to the correct format  
 #>
 
-#check os architecture and adjust paths accordingly
+<#
+    Check OS architecture and adjust paths accordingly
+#>
 if ([System.Environment]::Is64BitOperatingSystem -ne "True"){
     $architecture = ${Env:ProgramFiles(x86)}
 } else {
@@ -14,7 +15,8 @@ if ([System.Environment]::Is64BitOperatingSystem -ne "True"){
 }
 
 <#
-check if distribution and distribution/extensions exist under Firefox install directory (C:\Program Files\Mozilla Firefox)
+    Check if distribution and distribution/extensions exist under Firefox install directory
+    If not, Create folders
 #>
 $folder = $architecture + '\Mozilla Firefox\distribution\extensions\'
 if (-not(Test-Path -Path $folder -PathType Container)) {
@@ -28,14 +30,17 @@ if (-not(Test-Path -Path $folder -PathType Container)) {
 
 <#
     Copy language packs to extensions folder
-    Rename language packs
+    Rename language packs to meet required naming convention
 #>
-Copy-Item -Filter '*.xpi' -Destination $folder
+Copy-Item -Filter '.\*.xpi' -Destination $folder
 Get-ChildItem -Path $folder | Rename-Item -NewName {"langpack-" + (($_.name).TrimEnd(".xpi")) + "@firefox.mozilla.org.xpi"}
 
 
 <#
-    Create the required policies.json file or amend the existing one
+    Get system locale
+    Check to see if policies.json exists
+        If it doesn't, Create it and populate it with the relavant policy information
+        If it does exist, Amend it to include the relevant policy information
 #>
 $systemlocale = (Get-WinSystemLocale).name
 $json = @"
