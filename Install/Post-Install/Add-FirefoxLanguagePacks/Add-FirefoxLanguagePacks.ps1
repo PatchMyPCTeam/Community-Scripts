@@ -8,12 +8,25 @@
 <#
     Check OS architecture and adjust paths accordingly
 #>
-if ([System.Environment]::Is64BitOperatingSystem -ne "True"){
-    $architecture = ${Env:ProgramFiles(x86)}
-} else {
+if ([System.Environment]::Is32BitOperatingSystem -eq "True"){
     $architecture = $Env:Programfiles
-}
+}elseif ([System.Environment]::Is64BitOperatingSystem -eq "True"){
+    $installdirectory64 = ((Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | Where { $_.DisplayName -like "*firefox*" }) -ne $null)
 
+    if(-not $installdirectory64){
+
+        $installdirectory32 = (Get-ItemProperty HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* | Where { $_.DisplayName -like "*firefox*" }) -ne $null
+    
+        If(-Not $installdirectory32){
+            'Firefox not installed' | Out-File -filepath C:\temp\FirefoxLangPacks.log -Force
+        }else{
+            $architecture = ${Env:ProgramFiles(x86)}
+        }
+    } else {
+        $architecture = $Env:Programfiles
+    }
+}
+    
 <#
     Check if distribution and distribution/extensions exist under Firefox install directory
     If not, Create folders
