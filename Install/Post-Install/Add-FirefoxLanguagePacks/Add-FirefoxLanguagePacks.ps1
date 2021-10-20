@@ -173,7 +173,7 @@ if (-not(Test-Path -Path $folder -PathType Container)) {
     Rename language packs to meet required naming convention
 #>
 Write-CMLogEntry -Value "Copying language packs to $folder" -Severity 1 -Component "OS Architecture" -FileName $LogName -Folder "C:\ProgramData\PatchMyPCInstallLogs" -Bias $Bias -Enable
-Copy-Item -path '.\' -Filter '.\*.xpi' -Destination $folder
+Copy-Item -path $PSScriptRoot -Filter '.\*.xpi' -Destination $folder
 Write-CMLogEntry -Value "Renaming language packs to correct naming convention" -Severity 1 -Component "OS Architecture" -FileName $LogName -Folder "C:\ProgramData\PatchMyPCInstallLogs" -Bias $Bias -Enable
 Get-ChildItem -Path $folder | Rename-Item -NewName {"langpack-" + (($_.name).TrimEnd(".xpi")) + "@firefox.mozilla.org.xpi"}
 
