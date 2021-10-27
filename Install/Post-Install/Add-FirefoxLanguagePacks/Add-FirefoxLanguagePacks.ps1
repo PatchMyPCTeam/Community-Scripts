@@ -126,27 +126,27 @@ $LogName = "FirefoxLanguagePacks_" + (Get-Date -Format 'yyyy-MM-dd_HH-mm-ss') + 
 <#
     Check OS architecture and adjust paths accordingly
 #>
-Write-CMLogEntry -Value "Starting deployment of Firefox language packs" -Severity 1 -Component "Script Starting" -FileName $LogName -Folder "C:\ProgramData\PatchMyPCInstallLogs" -Bias $Bias -Enable
-Write-CMLogEntry -Value "Determining OS Architecture" -Severity 1 -Component "OS Architecture" -FileName $LogName -Folder "C:\ProgramData\PatchMyPCInstallLogs" -Bias $Bias -Enable
+Write-CMLogEntry -Value "Starting deployment of Firefox language packs" -Severity 1 -Component "Script Starting" -FileName $LogName -Folder "C:\Windows\Temp" -Bias $Bias -Enable
+Write-CMLogEntry -Value "Determining OS Architecture" -Severity 1 -Component "OS Architecture" -FileName $LogName -Folder "C:\Windows\Temp" -Bias $Bias -Enable
 if ([System.Environment]::Is32BitOperatingSystem -eq "True"){
-    Write-CMLogEntry -Value "OS Architecture is 32bit" -Severity 1 -Component "OS Architecture" -FileName $LogName -Folder "C:\ProgramData\PatchMyPCInstallLogs" -Bias $Bias -Enable
+    Write-CMLogEntry -Value "OS Architecture is 32bit" -Severity 1 -Component "OS Architecture" -FileName $LogName -Folder "C:\Windows\Temp" -Bias $Bias -Enable
     $architecture = $Env:Programfiles
 }elseif ([System.Environment]::Is64BitOperatingSystem -eq "True"){
-    Write-CMLogEntry -Value "OS Architecture is 64bit, Checking for install directory" -Severity 1 -Component "OS Architecture" -FileName $LogName -Folder "C:\ProgramData\PatchMyPCInstallLogs" -Bias $Bias -Enable
+    Write-CMLogEntry -Value "OS Architecture is 64bit, Checking for install directory" -Severity 1 -Component "OS Architecture" -FileName $LogName -Folder "C:\Windows\Temp" -Bias $Bias -Enable
     $installdirectory64 = (Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | Where { $_.DisplayName -like "*firefox*" }) -ne $null
 
     if(-not $installdirectory64){
-        Write-CMLogEntry -Value "64bit install directory not found, checking 32bit install directory" -Severity 2 -Component "OS Architecture" -FileName $LogName -Folder "C:\ProgramData\PatchMyPCInstallLogs" -Bias $Bias -Enable
+        Write-CMLogEntry -Value "64bit install directory not found, checking 32bit install directory" -Severity 2 -Component "OS Architecture" -FileName $LogName -Folder "C:\Windows\Temp" -Bias $Bias -Enable
         $installdirectory32 = (Get-ItemProperty HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* | Where { $_.DisplayName -like "*firefox*" }) -ne $null
     
         If(-Not $installdirectory32){
-            Write-CMLogEntry -Value "Firefox install path cannot be found. Likely not installed" -Severity 3 -Component "OS Architecture" -FileName $LogName -Folder "C:\ProgramData\PatchMyPCInstallLogs" -Bias $Bias -Enable
+            Write-CMLogEntry -Value "Firefox install path cannot be found. Likely not installed" -Severity 3 -Component "OS Architecture" -FileName $LogName -Folder "C:\Windows\Temp" -Bias $Bias -Enable
         }else{
-            Write-CMLogEntry -Value "Firefox install path is 32bit" -Severity 1 -Component "OS Architecture" -FileName $LogName -Folder "C:\ProgramData\PatchMyPCInstallLogs" -Bias $Bias -Enable
+            Write-CMLogEntry -Value "Firefox install path is 32bit" -Severity 1 -Component "OS Architecture" -FileName $LogName -Folder "C:\Windows\Temp" -Bias $Bias -Enable
             $architecture = ${Env:ProgramFiles(x86)}
         }
     } else {
-        Write-CMLogEntry -Value "Firefox install path is 64bit" -Severity 1 -Component "OS Architecture" -FileName $LogName -Folder "C:\ProgramData\PatchMyPCInstallLogs" -Bias $Bias -Enable
+        Write-CMLogEntry -Value "Firefox install path is 64bit" -Severity 1 -Component "OS Architecture" -FileName $LogName -Folder "C:\Windows\Temp" -Bias $Bias -Enable
         $architecture = $Env:Programfiles
     }
 }
@@ -155,15 +155,15 @@ if ([System.Environment]::Is32BitOperatingSystem -eq "True"){
     Check if distribution and distribution/extensions exist under Firefox install directory
     If not, Create folders
 #>
-Write-CMLogEntry -Value "Checking if Firefox policy folder exists" -Severity 1 -Component "OS Architecture" -FileName $LogName -Folder "C:\ProgramData\PatchMyPCInstallLogs" -Bias $Bias -Enable
+Write-CMLogEntry -Value "Checking if Firefox policy folder exists" -Severity 1 -Component "OS Architecture" -FileName $LogName -Folder "C:\Windows\Temp" -Bias $Bias -Enable
 $folder = $architecture + '\Mozilla Firefox\distribution\extensions\'
 if (-not(Test-Path -Path $folder -PathType Container)) {
     try {
-        Write-CMLogEntry -Value "Folder does not exist, Creating $folder" -Severity 1 -Component "OS Architecture" -FileName $LogName -Folder "C:\ProgramData\PatchMyPCInstallLogs" -Bias $Bias -Enable
+        Write-CMLogEntry -Value "Folder does not exist, Creating $folder" -Severity 1 -Component "OS Architecture" -FileName $LogName -Folder "C:\Windows\Temp" -Bias $Bias -Enable
         $null = New-Item -ItemType Directory -Path $folder -Force -ErrorAction Stop
     }
     catch {
-        Write-CMLogEntry -Value "Folder creation failed" -Severity 3 -Component "OS Architecture" -FileName $LogName -Folder "C:\ProgramData\PatchMyPCInstallLogs" -Bias $Bias -Enable
+        Write-CMLogEntry -Value "Folder creation failed" -Severity 3 -Component "OS Architecture" -FileName $LogName -Folder "C:\Windows\Temp" -Bias $Bias -Enable
         throw $_
     }
 }
@@ -172,9 +172,9 @@ if (-not(Test-Path -Path $folder -PathType Container)) {
     Copy language packs to extensions folder
     Rename language packs to meet required naming convention
 #>
-Write-CMLogEntry -Value "Copying language packs to $folder" -Severity 1 -Component "OS Architecture" -FileName $LogName -Folder "C:\ProgramData\PatchMyPCInstallLogs" -Bias $Bias -Enable
-Copy-Item -path $PSScriptRoot -Filter '.\*.xpi' -Destination $folder
-Write-CMLogEntry -Value "Renaming language packs to correct naming convention" -Severity 1 -Component "OS Architecture" -FileName $LogName -Folder "C:\ProgramData\PatchMyPCInstallLogs" -Bias $Bias -Enable
+Write-CMLogEntry -Value "Copying language packs to $folder" -Severity 1 -Component "OS Architecture" -FileName $LogName -Folder "C:\Windows\Temp" -Bias $Bias -Enable
+Get-ChildItem -Filter '.\*.xpi' | Copy-Item -Destination $folder
+Write-CMLogEntry -Value "Renaming language packs to correct naming convention" -Severity 1 -Component "OS Architecture" -FileName $LogName -Folder "C:\Windows\Temp" -Bias $Bias -Enable
 Get-ChildItem -Path $folder | Rename-Item -NewName {"langpack-" + (($_.name).TrimEnd(".xpi")) + "@firefox.mozilla.org.xpi"}
 
 
@@ -184,10 +184,10 @@ Get-ChildItem -Path $folder | Rename-Item -NewName {"langpack-" + (($_.name).Tri
         If it doesn't, Create it and populate it with the relavant policy information
         If it does exist, Amend it to include the relevant policy information
 #>
-Write-CMLogEntry -Value "Getting system locale" -Severity 1 -Component "OS Architecture" -FileName $LogName -Folder "C:\ProgramData\PatchMyPCInstallLogs" -Bias $Bias -Enable
+Write-CMLogEntry -Value "Getting system locale" -Severity 1 -Component "OS Architecture" -FileName $LogName -Folder "C:\Windows\Temp" -Bias $Bias -Enable
 $systemlocale = (Get-WinSystemLocale).name
-Write-CMLogEntry -Value "System locale is $systemlocale" -Severity 1 -Component "OS Architecture" -FileName $LogName -Folder "C:\ProgramData\PatchMyPCInstallLogs" -Bias $Bias -Enable
-Write-CMLogEntry -Value "Creating JSON to be written to policies.json" -Severity 1 -Component "OS Architecture" -FileName $LogName -Folder "C:\ProgramData\PatchMyPCInstallLogs" -Bias $Bias -Enable
+Write-CMLogEntry -Value "System locale is $systemlocale" -Severity 1 -Component "OS Architecture" -FileName $LogName -Folder "C:\Windows\Temp" -Bias $Bias -Enable
+Write-CMLogEntry -Value "Creating JSON to be written to policies.json" -Severity 1 -Component "OS Architecture" -FileName $LogName -Folder "C:\Windows\Temp" -Bias $Bias -Enable
 $json = @"
 {
   "policies": {
@@ -196,14 +196,14 @@ $json = @"
 }
 "@
 $policiesfile = $architecture + '\Mozilla Firefox\distribution\policies.json'
-Write-CMLogEntry -Value "Checking if $policiesfile exists" -Severity 3 -Component "OS Architecture" -FileName $LogName -Folder "C:\ProgramData\PatchMyPCInstallLogs" -Bias $Bias -Enable
+Write-CMLogEntry -Value "Checking if $policiesfile exists" -Severity 3 -Component "OS Architecture" -FileName $LogName -Folder "C:\Windows\Temp" -Bias $Bias -Enable
 if (-not(Test-Path -Path $policiesfile -PathType Leaf)) {
-    Write-CMLogEntry -Value "Policy file does not exist, Creating $policiesfile" -Severity 2 -Component "OS Architecture" -FileName $LogName -Folder "C:\ProgramData\PatchMyPCInstallLogs" -Bias $Bias -Enable
+    Write-CMLogEntry -Value "Policy file does not exist, Creating $policiesfile" -Severity 2 -Component "OS Architecture" -FileName $LogName -Folder "C:\Windows\Temp" -Bias $Bias -Enable
     New-Item -ItemType File -Path $policiesfile -Force
     $Utf8NoBomEncoding = New-Object System.Text.UTF8Encoding $False
     [System.IO.File]::WriteAllLines($policiesfile, $json, $Utf8NoBomEncoding)
 } else {
-    Write-CMLogEntry -Value "Policy file exists, Updating $policiesfile with locale policy" -Severity 1 -Component "OS Architecture" -FileName $LogName -Folder "C:\ProgramData\PatchMyPCInstallLogs" -Bias $Bias -Enable
+    Write-CMLogEntry -Value "Policy file exists, Updating $policiesfile with locale policy" -Severity 1 -Component "OS Architecture" -FileName $LogName -Folder "C:\Windows\Temp" -Bias $Bias -Enable
     $policyjson = Get-Content $policiesfile | ConvertFrom-Json -Depth 10
     $policyjson.policies | Add-Member -NotePropertyName RequestedLocales -NotePropertyValue "$systemlocale" -Force
     $policyjson = $policyjson | ConvertTo-Json -Depth 10
