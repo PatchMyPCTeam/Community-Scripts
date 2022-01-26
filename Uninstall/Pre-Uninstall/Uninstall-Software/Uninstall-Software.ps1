@@ -128,8 +128,8 @@ else {
             return $proc.ExitCode
         } 
         else { 
-            Write-Output ("Could not parse product code from '{0}'" -f $InstalledSoftware.UninstallString)
-            return 1
+            Write-Output ("Could not parse product code from '{0}', will use UninstallString as is" -f $InstalledSoftware.UninstallString)
+            Invoke-Expression $InstalledSoftware.UninstallString -ErrorAction "Stop"
         }
     }
 }
