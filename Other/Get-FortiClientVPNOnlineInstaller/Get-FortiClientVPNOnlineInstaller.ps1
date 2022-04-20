@@ -48,3 +48,4 @@ Do {
 } Until ($exists)
 Copy-Item $FortiClientVPNMSI.FullName -Destination "$LocalContentRepo"
 Stop-Process -Name $status.ProcessName
+Remove-Item -Path ".\FortiClientVPNOnlineInstaller_7.0.exe"
