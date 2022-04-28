@@ -1,0 +1,1 @@
+Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run","HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run" -Name "WinZip UN" -ErrorAction "Ignore" | Remove-Item -Force
