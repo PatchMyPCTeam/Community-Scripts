@@ -6,8 +6,8 @@ Uninstall software based on the DisplayName of said software in the registry
 ## SYNTAX
 
 ```
-Uninstall-Software [-DisplayName] <String> [[-Architecture] <String>] [[-HivesToSearch] <String[]>]
- [<CommonParameters>]
+Uninstall-Software.ps1 [-DisplayName] <String> [[-Architecture] <String>] [[-HivesToSearch] <String[]>]
+ [[-WindowsInstaller] <Int32>] [<CommonParameters>]
 ```
 
 ## DESCRIPTION
@@ -90,6 +90,26 @@ Aliases:
 Required: False
 Position: 3
 Default value: HKLM
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -WindowsInstaller
+Specify a value between 1, 0, or $null, to use as an additional criteria when trying to find installed software.
+
+If WindowsInstaller registry value has a data of 1, it generally means software was installed from MSI.
+If 0 or null, generally means was installed from EXE.
+
+This is useful to be more specific about software titles you want to uninstall.
+
+```yaml
+Type: Int32
+Parameter Sets: (All)
+Aliases:
+
+Required: False
+Position: 4
+Default value: 0
 Accept pipeline input: False
 Accept wildcard characters: False
 ```

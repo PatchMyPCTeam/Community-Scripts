@@ -29,6 +29,12 @@
     Choose which registry hive to search in while looking for installed software. Acceptabel values aref;
         - "HKLM" will search in hive HKEY_LOCAL_MACHINE which is typically where system-wide installed software is registered.
         - "HKCU" will search in hive HKEY_CURRENT_USER which is typically where user-based installed software is registered.
+.PARAMETER WindowsInstaller
+    Specify a value between 1, 0, or $null, to use as an additional criteria when trying to find installed software.
+
+    If WindowsInstaller registry value has a data of 1, it generally means software was installed from MSI. If 0 or null, generally means was installed from EXE.
+
+    This is useful to be more specific about software titles you want to uninstall.
 .EXAMPLE
     PS C:\> Uninstall-Software.ps1 -DisplayName "Greenshot"
     
@@ -42,11 +48,15 @@ param (
 
     [Parameter()]
     [ValidateSet('Both', 'x86', 'x64')]
-    [string]$Architecture = 'Both',
+    [String]$Architecture = 'Both',
 
     [Parameter()]
     [ValidateSet('HKLM', 'HKCU')]
-    [string[]]$HivesToSearch = 'HKLM'
+    [String[]]$HivesToSearch = 'HKLM',
+
+    [Parameter()]
+    [ValidateSet(1, 0, $null)]
+    [Int]$WindowsInstaller
 )
 function Get-InstalledSoftware {
     param(
@@ -95,7 +105,7 @@ function Get-InstalledSoftware {
         Write-Verbose $RegPath
     }
 
-    $propertyNames = 'DisplayName', 'DisplayVersion', 'PSChildName', 'Publisher', 'InstallDate', 'UninstallString'
+    $propertyNames = 'DisplayName', 'DisplayVersion', 'PSChildName', 'Publisher', 'InstallDate', 'UninstallString', 'WindowsInstaller'
 
     $AllFoundObjects = Get-ItemProperty -Path $FullPaths -Name $propertyNames -ErrorAction SilentlyContinue
 
@@ -106,7 +116,8 @@ function Get-InstalledSoftware {
     }
 }
 
-$InstalledSoftware = Get-InstalledSoftware -Architecture $Architecture -HivesToSearch $HivesToSearch | Where-Object DisplayName -eq $DisplayName
+$InstalledSoftware = Get-InstalledSoftware -Architecture $Architecture -HivesToSearch $HivesToSearch | 
+    Where-Object { $_.DisplayName -eq $DisplayName -And $WindowsInstaller -eq $_.WindowsInstaller }
 
 if ($InstalledSoftware.count -gt 0) {
     Write-Output ("Software '{0}' not installed" -f $DisplayName)
