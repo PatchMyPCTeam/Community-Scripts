@@ -13,11 +13,11 @@
     The script searches the registry for installed software, matching the supplied DisplayName value in the -DisplayName parameter
     with that of the DisplayName in the registry. If one match is found, it uninstalls the software using the UninstallString. 
 
-    If a product code is not in the UninstallString, the whole value in UninstallString is used.
+    If a product code is not in the UninstallString, the whole value in QuietUninstallString is used, or just UninstallString if QuietUninstallString doesn't exist.
 
     If more than one matches of the DisplayName occurs, uninstall is not possible.
 
-    If UninstallString is not present or null, uninstall is not possible.
+    If QuietUninstallString and UninstallString is not present or null, uninstall is not possible.
 .PARAMETER DisplayName
     The name of the software you wish to uninstall as it exactly appears in the registry as its DisplayName value.
 .PARAMETER Architecture
@@ -30,9 +30,11 @@
         - "HKLM" will search in hive HKEY_LOCAL_MACHINE which is typically where system-wide installed software is registered.
         - "HKCU" will search in hive HKEY_CURRENT_USER which is typically where user-based installed software is registered.
 .PARAMETER WindowsInstaller
-    Specify a value between 1, 0, or $null, to use as an additional criteria when trying to find installed software.
+    Specify a value between 1 and 0 to use as an additional criteria when trying to find installed software.
 
-    If WindowsInstaller registry value has a data of 1, it generally means software was installed from MSI. If 0 or null, generally means was installed from EXE.
+    If WindowsInstaller registry value has a data of 1, it generally means software was installed from MSI.
+
+    Omitting the parameter entirely or specify a value of 0 generally means software was installed from EXE
 
     This is useful to be more specific about software titles you want to uninstall.
 .EXAMPLE

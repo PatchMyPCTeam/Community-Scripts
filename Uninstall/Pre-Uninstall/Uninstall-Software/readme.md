@@ -23,11 +23,11 @@ The script searches the registry for installed software, matching the supplied D
 with that of the DisplayName in the registry.
 If one match is found, it uninstalls the software using the UninstallString. 
 
-If a product code is not in the UninstallString, the whole value in UninstallString is used.
+If a product code is not in the UninstallString, the whole value in QuietUninstallString is used, or just UninstallString if QuietUninstallString doesn't exist.
 
 If more than one matches of the DisplayName occurs, uninstall is not possible.
 
-If UninstallString is not present or null, uninstall is not possible.
+If QuietUninstallString and UninstallString is not present or null, uninstall is not possible.
 
 ## EXAMPLES
 
