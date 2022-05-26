@@ -55,7 +55,7 @@ param (
     [String[]]$HivesToSearch = 'HKLM',
 
     [Parameter()]
-    [ValidateSet(1, 0, $null)]
+    [ValidateSet(1, 0)]
     [Int]$WindowsInstaller
 )
 function Get-InstalledSoftware {
@@ -105,7 +105,7 @@ function Get-InstalledSoftware {
         Write-Verbose $RegPath
     }
 
-    $propertyNames = 'DisplayName', 'DisplayVersion', 'PSChildName', 'Publisher', 'InstallDate', 'UninstallString', 'WindowsInstaller'
+    $propertyNames = 'DisplayName', 'DisplayVersion', 'PSChildName', 'Publisher', 'InstallDate', 'QuietUninstallString', 'UninstallString', 'WindowsInstaller'
 
     $AllFoundObjects = Get-ItemProperty -Path $FullPaths -Name $propertyNames -ErrorAction SilentlyContinue
 
@@ -116,20 +116,30 @@ function Get-InstalledSoftware {
     }
 }
 
-$InstalledSoftware = Get-InstalledSoftware -Architecture $Architecture -HivesToSearch $HivesToSearch | 
-    Where-Object { $_.DisplayName -eq $DisplayName -And $WindowsInstaller -eq $_.WindowsInstaller }
+[array]$InstalledSoftware = Get-InstalledSoftware -Architecture $Architecture -HivesToSearch $HivesToSearch | 
+    Where-Object { 
+        $_.DisplayName -eq $DisplayName -And $(if ($PSBoundParameters.ContainsKey('WindowsInstaller')) {
+            $WindowsInstaller -eq $_.WindowsInstaller
+        }
+        else {
+            $true
+        })
+    }
 
-if ($InstalledSoftware.count -gt 0) {
-    Write-Output ("Software '{0}' not installed" -f $DisplayName)
+if ($InstalledSoftware.count -eq 0) {
+    Write-Verbose ("Software '{0}' not installed" -f $DisplayName)
     return 1
 }
 elseif ($InstalledSoftware.count -gt 1) {
-    Write-Output ("Found more than one instance of software '{0}', skipping because not sure which UninstallString to execute" -f $DisplayName)
+    Write-Verbose ("Found more than one instance of software '{0}', skipping because not sure which UninstallString to execute" -f $DisplayName)
     return 1
 }
 else {
-    if ([String]::IsNullOrWhiteSpace($InstalledSoftware.UninstallString)) {
-        Write-Output ("Can not uninstall software as UninstallString is empty for '{0}'" -f $InstalledSoftware.UninstallString)
+    Write-Verbose "Found software"
+    Write-Verbose ($InstalledSoftware | ConvertTo-Json)
+
+    if ([String]::IsNullOrWhiteSpace($InstalledSoftware.UninstallString) -Or [String]::IsNullOrWhiteSpace($InstalledSoftware.QuietUninstallString)) {
+        Write-Verbose ("Can not uninstall software as UninstallString and QuietUninstallString are both empty for '{0}'" -f $InstalledSoftware.DisplayName)
         return 1
     }
     else {
@@ -139,8 +149,15 @@ else {
             return $proc.ExitCode
         } 
         else { 
-            Write-Output ("Could not parse product code from '{0}', will use UninstallString as is" -f $InstalledSoftware.UninstallString)
-            Invoke-Expression $InstalledSoftware.UninstallString -ErrorAction "Stop"
+            Write-Verbose ("Could not parse product code from '{0}'" -f $InstalledSoftware.UninstallString)
+            if (-not [String]::IsNullOrWhiteSpace($InstalledSoftware.QuietUninstallString)) {
+                Write-Verbose ("Trying QuietUninstallString '{0}'" -f $InstalledSoftware.QuietUninstallString)
+                Invoke-Expression "& $($InstalledSoftware.QuietUninstallString)" -ErrorAction "Stop"
+            }
+            else {
+                Write-Verbose ("Trying UninstallString '{0}'" -f $InstalledSoftware.QuietUninstallString)
+                Invoke-Expression "& $($InstalledSoftware.UninstallString)" -ErrorAction "Stop"
+            }
         }
     }
 }

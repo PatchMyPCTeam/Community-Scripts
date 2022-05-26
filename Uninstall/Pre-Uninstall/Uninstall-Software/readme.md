@@ -95,10 +95,11 @@ Accept wildcard characters: False
 ```
 
 ### -WindowsInstaller
-Specify a value between 1, 0, or $null, to use as an additional criteria when trying to find installed software.
+Specify a value between 1 and 0 to use as an additional criteria when trying to find installed software.
 
 If WindowsInstaller registry value has a data of 1, it generally means software was installed from MSI.
-If 0 or null, generally means was installed from EXE.
+
+Omitting the parameter entirely or specify a value of 0 generally means software was installed from EXE
 
 This is useful to be more specific about software titles you want to uninstall.
 
