@@ -1,4 +1,4 @@
-# Uninstall-Software.ps1
+# Get-FortiClientVPNOnlineInstaller.ps1
 
 ## SYNOPSIS
 Download and copy the MSI from the FortiClientVPN Online Installer
