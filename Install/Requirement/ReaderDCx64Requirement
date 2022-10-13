@@ -1,0 +1,8 @@
+$Value = Get-ItemProperty -Path "HKLM:\SOFTWARE\Adobe\Adobe Acrobat\DC\Installer" -Name "SCAPackageLevel" -ErrorAction SilentlyContinue
+
+if($Value.SCAPackageLevel -ne 1){
+    Write-Output "NotApplicable"
+}
+else{
+    Write-Output "Applicable"
+}
