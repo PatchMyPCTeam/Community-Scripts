@@ -1,3 +1,5 @@
+# Script to determine if Adobe Acrobat Pro is installed, and only allow installation if it is not installed.
+
 $Value = Get-ItemProperty -Path "HKLM:\SOFTWARE\Adobe\Adobe Acrobat\DC\Installer" -Name "SCAPackageLevel" -ErrorAction SilentlyContinue
 
 if($Value.SCAPackageLevel -ne 1){
