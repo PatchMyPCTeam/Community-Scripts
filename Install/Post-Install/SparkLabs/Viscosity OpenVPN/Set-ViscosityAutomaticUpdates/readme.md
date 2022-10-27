@@ -56,12 +56,5 @@ Accept pipeline input: False
 Accept wildcard characters: False
 ```
 
-### -Architecture
-Choose which registry key path to search in while looking for installed software.
-Acceptable values are:
-    - "x86" will search in SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall on a 64-bit system.
-    - "x64" will search in SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall.
-    - "Both" will search in both key paths.
-
 ### CommonParameters
 This cmdlet supports the common parameters: -Debug, -ErrorAction, -ErrorVariable, -InformationAction, -InformationVariable, -OutVariable, -OutBuffer, -PipelineVariable, -Verbose, -WarningAction, and -WarningVariable. For more information, see [about_CommonParameters](http://go.microsoft.com/fwlink/?LinkID=113216).
