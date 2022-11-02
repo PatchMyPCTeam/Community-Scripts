@@ -130,19 +130,16 @@ function Get-InstalledSoftware {
 
 if ($InstalledSoftware.count -eq 0) {
     Write-Verbose ("Software '{0}' not installed" -f $DisplayName)
-    return 1
 }
 elseif ($InstalledSoftware.count -gt 1) {
     Write-Verbose ("Found more than one instance of software '{0}', skipping because not sure which UninstallString to execute" -f $DisplayName)
-    return 1
 }
 else {
     Write-Verbose "Found software"
     Write-Verbose ($InstalledSoftware | ConvertTo-Json)
 
-    if ([String]::IsNullOrWhiteSpace($InstalledSoftware.UninstallString) -Or [String]::IsNullOrWhiteSpace($InstalledSoftware.QuietUninstallString)) {
+    if ([String]::IsNullOrWhiteSpace($InstalledSoftware.UninstallString) -And [String]::IsNullOrWhiteSpace($InstalledSoftware.QuietUninstallString)) {
         Write-Verbose ("Can not uninstall software as UninstallString and QuietUninstallString are both empty for '{0}'" -f $InstalledSoftware.DisplayName)
-        return 1
     }
     else {
         $ProductCode = [Regex]::Match($InstalledSoftware.UninstallString, "(\{.+\})").Groups[0].Value
