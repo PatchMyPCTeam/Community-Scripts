@@ -37,6 +37,8 @@
     Omitting the parameter entirely or specify a value of 0 generally means software was installed from EXE
 
     This is useful to be more specific about software titles you want to uninstall.
+.PARAMETER AdditionalArguments
+    A string which includes the additional parameters you would like passed to the uninstaller.
 .EXAMPLE
     PS C:\> Uninstall-Software.ps1 -DisplayName "Greenshot"
     
@@ -58,7 +60,10 @@ param (
 
     [Parameter()]
     [ValidateSet(1, 0)]
-    [Int]$WindowsInstaller
+    [Int]$WindowsInstaller,
+
+    [Parameter()]
+    [String]$AdditionalArguments
 )
 function Get-InstalledSoftware {
     param(
@@ -118,6 +123,11 @@ function Get-InstalledSoftware {
     }
 }
 
+$log = '{0}\Uninstall-Software-{1}.log' -f $env:temp, $DisplayName.Replace(' ','_')
+$null = Start-Transcript -Path $log -Append -NoClobber -Force
+
+$VerbosePreference = 'Continue'
+
 [array]$InstalledSoftware = Get-InstalledSoftware -Architecture $Architecture -HivesToSearch $HivesToSearch | 
     Where-Object { 
         $_.DisplayName -eq $DisplayName -And $(if ($PSBoundParameters.ContainsKey('WindowsInstaller')) {
@@ -135,7 +145,7 @@ elseif ($InstalledSoftware.count -gt 1) {
     Write-Verbose ("Found more than one instance of software '{0}', skipping because not sure which UninstallString to execute" -f $DisplayName)
 }
 else {
-    Write-Verbose "Found software"
+    Write-Verbose ("Found '{0}':" -f $DisplayName)
     Write-Verbose ($InstalledSoftware | ConvertTo-Json)
 
     if ([String]::IsNullOrWhiteSpace($InstalledSoftware.UninstallString) -And [String]::IsNullOrWhiteSpace($InstalledSoftware.QuietUninstallString)) {
@@ -144,19 +154,49 @@ else {
     else {
         $ProductCode = [Regex]::Match($InstalledSoftware.UninstallString, "(\{.+\})").Groups[0].Value
         if ($ProductCode) { 
-            $proc = Start-Process -FilePath "msiexec.exe" -ArgumentList "/x",$ProductCode,"/qn" -Wait -PassThru -ErrorAction "Stop"
+            Write-Verbose ("Found product code, will uninstall using '{0}'" -f $ProductCode)
+
+            $StartProcessSplat = @{
+                FilePath = "msiexec.exe"
+                ArgumentList = "/x", $ProductCode, "/qn", "REBOOT=ReallySuppress"
+                Wait = $true
+                PassThru = $true
+                ErrorAction = 'Stop'
+            }
+
+            if ($PSBoundParameters.ContainsKey('AdditionalArguments')) {
+                Write-Verbose ('Adding additional arguments "{0}" to uninstall string' -f $AdditionalArguments)
+                $StartProcessSplat['ArgumentList'] = $StartProcessSplat['ArgumentList'] += $AdditionalArguments
+            }
+
+            Write-Verbose ("Trying uninstall with 'msiexec.exe {0}'" -f [String]$StartProcessSplat['ArgumentList'])
+            $proc = Start-Process @StartProcessSplat
             return $proc.ExitCode
         } 
         else { 
             Write-Verbose ("Could not parse product code from '{0}'" -f $InstalledSoftware.UninstallString)
             if (-not [String]::IsNullOrWhiteSpace($InstalledSoftware.QuietUninstallString)) {
+                if ($PSBoundParameters.ContainsKey('AdditionalArguments')) {
+                    Write-Verbose ('Adding additional arguments "{0}" to QuietUninstallString' -f $AdditionalArguments)
+                    $InstalledSoftware.QuietUninstallString = '{0} {1}' -f $InstalledSoftware.QuietUninstallString, $AdditionalArguments
+                }
+
                 Write-Verbose ("Trying QuietUninstallString '{0}'" -f $InstalledSoftware.QuietUninstallString)
                 Invoke-Expression "& $($InstalledSoftware.QuietUninstallString)" -ErrorAction "Stop"
             }
             else {
-                Write-Verbose ("Trying UninstallString '{0}'" -f $InstalledSoftware.QuietUninstallString)
+                Write-Verbose ("Trying UninstallString '{0}'" -f $InstalledSoftware.UninstallString)
+
+                if ($PSBoundParameters.ContainsKey("AdditionalArguments")) {
+                    Write-Verbose ("Adding additional arguments '{0}' to UninstallString" -f $AdditionalArguments)
+                    $InstalledSoftware.UninstallString = "{0} {1}" -f $InstalledSoftware.UninstallString, $AdditionalArguments
+                }
+
+                Write-Verbose ("Trying UninstallString '{0}'" -f $InstalledSoftware.UninstallString)
                 Invoke-Expression "& $($InstalledSoftware.UninstallString)" -ErrorAction "Stop"
             }
         }
     }
 }
+
+$null = Stop-Transcript
