@@ -158,7 +158,7 @@ else {
 
             $StartProcessSplat = @{
                 FilePath = "msiexec.exe"
-                ArgumentList = "/x", $ProductCode, "/qn"
+                ArgumentList = "/x", $ProductCode, "/qn", "REBOOT=ReallySuppress"
                 Wait = $true
                 PassThru = $true
                 ErrorAction = 'Stop'
@@ -186,21 +186,6 @@ else {
             }
             else {
                 Write-Verbose ("Trying UninstallString '{0}'" -f $InstalledSoftware.UninstallString)
-
-                if ($InstalledSoftware.UninstallString -match '^msiexec\.exe /i') {
-                    Write-Verbose "Replacing 'msiexec.exe /i' with 'msiexec.exe /x' in UninstallString"
-                    $InstalledSoftware.UninstallString -replace '^msiexec\.exe /i', 'msiexec.exe /x'
-                }
-
-                if ($InstalledSoftware.UninstallString -notmatch '/qb') {
-                    Write-Verbose "Adding '/qn' parametert to UninstallString"
-                    $InstalledSoftware.UninstallString = '{0} /qn' -f $InstalledSoftware.UninstallString
-                }
-
-                if ($InstalledSoftware.UninstallString -notmatch 'REBOOT=ReallySuppress') {
-                    Write-Verbose "Adding 'REBOOT=ReallySuppress' parameter to UninstallString"
-                    $InstalledSoftware.UninstallString = '{0} REBOOT=ReallySuppress' -f $InstalledSoftware.UninstallString
-                }
 
                 if ($PSBoundParameters.ContainsKey("AdditionalArguments")) {
                     Write-Verbose ("Adding additional arguments '{0}' to UninstallString" -f $AdditionalArguments)
