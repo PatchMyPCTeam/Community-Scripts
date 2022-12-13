@@ -19,7 +19,7 @@
 
     If QuietUninstallString and UninstallString is not present or null, uninstall is not possible.
 .PARAMETER DisplayName
-    The name of the software you wish to uninstall as it exactly appears in the registry as its DisplayName value.
+    The name of the software you wish to uninstall as it appears in the registry as its DisplayName value. * wildcard supported.
 .PARAMETER Architecture
     Choose which registry key path to search in while looking for installed software. Acceptable values are:
         - "x86" will search in SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall on a 64-bit system.
@@ -45,6 +45,10 @@
     Uninstalls Greenshot if "Greenshot" is detected as the DisplayName in a key under either of the registry key paths:
         - SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall
         - SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall 
+.EXAMPLE
+    PS C:\> Uninstall-Software.ps1 -DisplayName "Mozilla*"
+
+    Uninstalls any products where DisplayName starts with "Mozilla"
 #>
 param (
     [Parameter(Mandatory)]
@@ -123,14 +127,14 @@ function Get-InstalledSoftware {
     }
 }
 
-$log = '{0}\Uninstall-Software-{1}.log' -f $env:temp, $DisplayName.Replace(' ','_')
+$log = '{0}\Uninstall-Software-{1}.log' -f $env:temp, $DisplayName.Replace(' ','_').Replace('*','')
 $null = Start-Transcript -Path $log -Append -NoClobber -Force
 
 $VerbosePreference = 'Continue'
 
 [array]$InstalledSoftware = Get-InstalledSoftware -Architecture $Architecture -HivesToSearch $HivesToSearch | 
     Where-Object { 
-        $_.DisplayName -eq $DisplayName -And $(if ($PSBoundParameters.ContainsKey('WindowsInstaller')) {
+        $_.DisplayName -like $DisplayName -And $(if ($PSBoundParameters.ContainsKey('WindowsInstaller')) {
             $WindowsInstaller -eq $_.WindowsInstaller
         }
         else {
