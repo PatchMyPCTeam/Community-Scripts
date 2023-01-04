@@ -50,6 +50,7 @@
 
     Uninstalls any products where DisplayName starts with "Mozilla"
 #>
+[CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
 param (
     [Parameter(Mandatory)]
     [String]$DisplayName,
@@ -150,13 +151,13 @@ elseif ($InstalledSoftware.count -gt 1) {
 }
 else {
     Write-Verbose ("Found '{0}':" -f $DisplayName)
-    Write-Verbose ($InstalledSoftware | ConvertTo-Json)
+    Write-Verbose ($InstalledSoftware[0] | ConvertTo-Json)
 
-    if ([String]::IsNullOrWhiteSpace($InstalledSoftware.UninstallString) -And [String]::IsNullOrWhiteSpace($InstalledSoftware.QuietUninstallString)) {
-        Write-Verbose ("Can not uninstall software as UninstallString and QuietUninstallString are both empty for '{0}'" -f $InstalledSoftware.DisplayName)
+    if ([String]::IsNullOrWhiteSpace($InstalledSoftware[0].UninstallString) -And [String]::IsNullOrWhiteSpace($InstalledSoftware[0].QuietUninstallString)) {
+        Write-Verbose ("Can not uninstall software as UninstallString and QuietUninstallString are both empty for '{0}'" -f $InstalledSoftware[0].DisplayName)
     }
     else {
-        $ProductCode = [Regex]::Match($InstalledSoftware.UninstallString, "(\{.+\})").Groups[0].Value
+        $ProductCode = [Regex]::Match($InstalledSoftware[0].UninstallString, "(\{.+\})").Groups[0].Value
         if ($ProductCode) { 
             Write-Verbose ("Found product code, will uninstall using '{0}'" -f $ProductCode)
 
@@ -178,26 +179,26 @@ else {
             return $proc.ExitCode
         } 
         else { 
-            Write-Verbose ("Could not parse product code from '{0}'" -f $InstalledSoftware.UninstallString)
-            if (-not [String]::IsNullOrWhiteSpace($InstalledSoftware.QuietUninstallString)) {
+            Write-Verbose ("Could not parse product code from '{0}'" -f $InstalledSoftware[0].UninstallString)
+            if (-not [String]::IsNullOrWhiteSpace($InstalledSoftware[0].QuietUninstallString)) {
                 if ($PSBoundParameters.ContainsKey('AdditionalArguments')) {
                     Write-Verbose ('Adding additional arguments "{0}" to QuietUninstallString' -f $AdditionalArguments)
-                    $InstalledSoftware.QuietUninstallString = '{0} {1}' -f $InstalledSoftware.QuietUninstallString, $AdditionalArguments
+                    $InstalledSoftware[0].QuietUninstallString = '{0} {1}' -f $InstalledSoftware[0].QuietUninstallString, $AdditionalArguments
                 }
 
-                Write-Verbose ("Trying QuietUninstallString '{0}'" -f $InstalledSoftware.QuietUninstallString)
-                Invoke-Expression "& $($InstalledSoftware.QuietUninstallString)" -ErrorAction "Stop"
+                Write-Verbose ("Trying QuietUninstallString '{0}'" -f $InstalledSoftware[0].QuietUninstallString)
+                Invoke-Expression "& $($InstalledSoftware[0].QuietUninstallString)" -ErrorAction "Stop"
             }
             else {
-                Write-Verbose ("Trying UninstallString '{0}'" -f $InstalledSoftware.UninstallString)
+                Write-Verbose ("Trying UninstallString '{0}'" -f $InstalledSoftware[0].UninstallString)
 
                 if ($PSBoundParameters.ContainsKey("AdditionalArguments")) {
                     Write-Verbose ("Adding additional arguments '{0}' to UninstallString" -f $AdditionalArguments)
-                    $InstalledSoftware.UninstallString = "{0} {1}" -f $InstalledSoftware.UninstallString, $AdditionalArguments
+                    $InstalledSoftware[0].UninstallString = "{0} {1}" -f $InstalledSoftware[0].UninstallString, $AdditionalArguments
                 }
 
-                Write-Verbose ("Trying UninstallString '{0}'" -f $InstalledSoftware.UninstallString)
-                Invoke-Expression "& $($InstalledSoftware.UninstallString)" -ErrorAction "Stop"
+                Write-Verbose ("Trying UninstallString '{0}'" -f $InstalledSoftware[0].UninstallString)
+                Invoke-Expression "& $($InstalledSoftware[0].UninstallString)" -ErrorAction "Stop"
             }
         }
     }
