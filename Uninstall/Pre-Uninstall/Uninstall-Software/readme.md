@@ -1,4 +1,4 @@
-# Uninstall-Software.ps1
+# Uninstall-Software
 
 ## SYNOPSIS
 Uninstall software based on the DisplayName of said software in the registry
@@ -6,8 +6,9 @@ Uninstall software based on the DisplayName of said software in the registry
 ## SYNTAX
 
 ```
-Uninstall-Software.ps1 [-DisplayName] <String> [[-Architecture] <String>] [[-HivesToSearch] <String[]>]
- [[-WindowsInstaller] <Int32>] [<CommonParameters>]
+Uninstall-Software [-DisplayName] <String> [[-Architecture] <String>] [[-HivesToSearch] <String[]>]
+ [[-WindowsInstaller] <Int32>] [[-SystemComponent] <Int32>] [[-AdditionalArguments] <String>] [-UninstallAll]
+ [-WhatIf] [-Confirm] [<CommonParameters>]
 ```
 
 ## DESCRIPTION
@@ -40,10 +41,18 @@ Uninstalls Greenshot if "Greenshot" is detected as the DisplayName in a key unde
     - SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall
     - SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall
 
+### EXAMPLE 2
+```
+Uninstall-Software.ps1 -DisplayName "Mozilla*"
+```
+
+Uninstalls any products where DisplayName starts with "Mozilla"
+
 ## PARAMETERS
 
 ### -DisplayName
-The name of the software you wish to uninstall as it exactly appears in the registry as its DisplayName value.
+The name of the software you wish to uninstall as it appears in the registry as its DisplayName value.
+* wildcard supported.
 
 ```yaml
 Type: String
@@ -103,6 +112,8 @@ Omitting the parameter entirely or specify a value of 0 generally means software
 
 This is useful to be more specific about software titles you want to uninstall.
 
+Specifying a value of 0 will look for software where WindowsInstaller is equal to 0, or not present at all.
+
 ```yaml
 Type: Int32
 Parameter Sets: (All)
@@ -110,6 +121,23 @@ Aliases:
 
 Required: False
 Position: 4
+Default value: 0
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -SystemComponent
+Specify a value between 1 and 0 to use as an additional criteria when trying to find installed software.
+
+Specifying a value of 0 will look for software where SystemComponent is equal to 0, or not present at all.
+
+```yaml
+Type: Int32
+Parameter Sets: (All)
+Aliases:
+
+Required: False
+Position: 5
 Default value: 0
 Accept pipeline input: False
 Accept wildcard characters: False
@@ -124,7 +152,57 @@ Parameter Sets: (All)
 Aliases:
 
 Required: False
-Position: 5
+Position: 6
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -UninstallAll
+This switch will uninstall all software matching the search criteria of -DisplayName, -WindowsInstaller, and -SystemComponent.
+
+-DisplayName allows wildcards, and if there are multiple matches based on the wild card, this switch will uninstall matching software.
+
+Without this parameter, the script will do nothing if there are multiple matches found.
+
+```yaml
+Type: SwitchParameter
+Parameter Sets: (All)
+Aliases:
+
+Required: False
+Position: Named
+Default value: False
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -WhatIf
+Shows what would happen if the cmdlet runs.
+The cmdlet is not run.
+
+```yaml
+Type: SwitchParameter
+Parameter Sets: (All)
+Aliases: wi
+
+Required: False
+Position: Named
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -Confirm
+Prompts you for confirmation before running the cmdlet.
+
+```yaml
+Type: SwitchParameter
+Parameter Sets: (All)
+Aliases: cf
+
+Required: False
+Position: Named
 Default value: None
 Accept pipeline input: False
 Accept wildcard characters: False
@@ -132,3 +210,11 @@ Accept wildcard characters: False
 
 ### CommonParameters
 This cmdlet supports the common parameters: -Debug, -ErrorAction, -ErrorVariable, -InformationAction, -InformationVariable, -OutVariable, -OutBuffer, -PipelineVariable, -Verbose, -WarningAction, and -WarningVariable. For more information, see [about_CommonParameters](http://go.microsoft.com/fwlink/?LinkID=113216).
+
+## INPUTS
+
+## OUTPUTS
+
+## NOTES
+
+## RELATED LINKS
