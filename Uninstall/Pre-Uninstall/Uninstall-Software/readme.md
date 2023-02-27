@@ -1,4 +1,4 @@
-# Uninstall-Software
+# Uninstall-Software.ps1
 
 ## SYNOPSIS
 Uninstall software based on the DisplayName of said software in the registry
