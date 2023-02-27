@@ -87,18 +87,18 @@ param (
     [String]$AdditionalArguments,
 
     [Parameter()]
-    [Switch]$UninstallAll,
+    [Switch]$UninstallAll
 )
 
 function Get-InstalledSoftware {
     param(
-        [Parameter()]
+        [Parameter(Mandatory)]
         [ValidateSet('Both', 'x86', 'x64')]
-        [string]$Architecture,
+        [String]$Architecture,
 
-        [Parameter()]
+        [Parameter(Mandatory)]
         [ValidateSet('HKLM', 'HKCU')]
-        [string[]]$HivesToSearch
+        [String[]]$HivesToSearch
     )
     $PathsToSearch = switch -regex ($Architecture) {
         'Both|x86' {
@@ -220,13 +220,14 @@ $VerbosePreference = 'Continue'
 
 [array]$InstalledSoftware = Get-InstalledSoftware -Architecture $Architecture -HivesToSearch $HivesToSearch | 
     Where-Object { 
+        $Software = $_
         $_WindowsInstaller = if ($PSBoundParameters.ContainsKey('WindowsInstaller')) {
             switch ($WindowsInstaller) {
                 1 {
-                    $WindowsInstaller -eq $_.WindowsInstaller
+                    [int]$WindowsInstaller -eq [int]$Software.WindowsInstaller
                 }
                 0 {
-                    $WindowsInstaller -eq $_.WindowsInstaller -Or [String]::IsNullOrWhiteSpace($_.WindowsInstaller)
+                    [int]$WindowsInstaller -eq [int]$Software.WindowsInstaller -Or [String]::IsNullOrWhiteSpace($Software.WindowsInstaller)
                 }
             }
         }
@@ -237,10 +238,10 @@ $VerbosePreference = 'Continue'
         $_SystemComponent = if ($PSBoundParameters.ContainsKey('SystemComponent')) {
             switch ($SystemComponent) {
                 1 {
-                    $SystemComponent -eq $_.SystemComponent
+                    [int]$SystemComponent -eq [int]$Software.SystemComponent
                 }
                 0 {
-                    $SystemComponent -eq $_.SystemComponent -Or [String]::IsNullOrWhiteSpace($_.SystemComponent)
+                    [int]$SystemComponent -eq [int]$Software.SystemComponent -Or [String]::IsNullOrWhiteSpace($Software.SystemComponent)
                 }
             }
         }
