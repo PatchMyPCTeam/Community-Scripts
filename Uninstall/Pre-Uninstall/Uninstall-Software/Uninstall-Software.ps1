@@ -62,7 +62,7 @@
 
     Uninstalls any products where DisplayName starts with "Mozilla"
 #>
-[CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
+[CmdletBinding()]
 param (
     [Parameter(Mandatory)]
     [String]$DisplayName,
@@ -166,7 +166,7 @@ function Uninstall-Software {
         Write-Verbose ("Can not uninstall software as UninstallString and QuietUninstallString are both empty for '{0}'" -f $Software.DisplayName)
     }
     else {
-        $ProductCode = [Regex]::Match($Software.UninstallString, "(\{.+\})").Groups[0].Value
+        $ProductCode = [Regex]::Match($Software.UninstallString, "^msiexec.+(\{.+\})", 'IgnoreCase').Groups[1].Value
         if ($ProductCode) { 
             Write-Verbose ("Found product code, will uninstall using '{0}'" -f $ProductCode)
 
