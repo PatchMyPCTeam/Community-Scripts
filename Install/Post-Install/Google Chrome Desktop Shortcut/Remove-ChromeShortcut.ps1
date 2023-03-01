@@ -1,6 +1,6 @@
 #region Remove Desktop shortcut
 ## Remove existing Desktop shortcut
-Remove-File -Path "$($envCommonDesktop)\$($appName).lnk"
+Remove-File -Path "$($env:PUBLIC)\desktop\Google Chrome.lnk"
 ## Prevent creation of the Desktop shortcut
 $InstallLocation = Split-Path ((Get-ItemProperty -Path "HKLM:\SOFTWARE\Classes\ChromeHTML\shell\open\command" -Name "(Default)")."(Default)").Split("--")[0].Trim('"',' ') -Parent
 $PrefFile = "$($InstallLocation)\master_preferences"
