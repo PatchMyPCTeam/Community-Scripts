@@ -14,6 +14,7 @@
     .\PatchMyPC-Remove-JRE8.ps1 -VersionToExclude "361 (64-bit)"
     This will remove all versions of JRE8 except 8u361 x64
 #>
+
 [cmdletbinding()]
 param(
     [Parameter(Mandatory = $true)]
