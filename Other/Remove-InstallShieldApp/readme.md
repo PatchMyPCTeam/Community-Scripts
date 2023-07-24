@@ -1,9 +1,7 @@
 # PatchMyPC-Remove-InstallShieldApp.ps1
 
 ## SYNOPSIS
-Uninstall installshield based software
-Original Credit to SilentInstallHQ using PSAppDeployToolkit
-https://silentinstallhq.com/3dconnexion-3dxware-silent-uninstall-powershell/?utm_content=cmp-true
+Uninstall installshield based software. Original Credit to SilentInstallHQ using PSAppDeployToolkit https://silentinstallhq.com/3dconnexion-3dxware-silent-uninstall-powershell/?utm_content=cmp-true
 
 ## DESCRIPTION
 Some older apps install using an InstallShield installer and do not have the correct uninstall information in the ARP registry key to pivot off to do an unattended uninstallation of the application.
@@ -66,7 +64,7 @@ Specify the app language (this name will be used to build the ISS response file)
 ```yaml
 Type: String
 Required: False
-Default value: 009
+Default value: '009'
 Accept pipeline input: False
 Accept wildcard characters: False 
 ```
