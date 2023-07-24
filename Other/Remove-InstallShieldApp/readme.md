@@ -20,9 +20,10 @@ This script can be used to build a response file to uninstall the app using the 
 ```
 .\PatchMyPC-Remove-InstallShieldApp.ps1 -App \"3Dconnexion 3DxWare 10\" -Vendor \"3Dconnexion\" -AppVersions \"10.4.10, 10.6.3, 10.6.4\"
 ```
- When used with PMP pre Script feature, comment out the quotes around the parameters
- -----------------------------------------------------------------------------------
 
+When used with PMP pre Script feature, comment out the quotes around the parameters
+ 
+ -----------------------------------------------------------------------------------
 
 ## PARAMETERS
 
