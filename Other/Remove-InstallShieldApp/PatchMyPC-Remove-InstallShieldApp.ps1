@@ -5,7 +5,7 @@
     https://silentinstallhq.com/3dconnexion-3dxware-silent-uninstall-powershell/?utm_content=cmp-true
 
 .DESCRIPTION
-    Some older apps installed using an InstallSHield installer do not have the correct uninstall information in the ARP registry key to pivot off to do an uninstall of the application.
+    Some older apps install using an InstallShield installer and do not have the correct uninstall information in the ARP registry key to pivot off to do an unattended uninstallation of the application.
     This script can be used to build a response file to uninstall the app using the setup.exe and setup.ilg files that are created when the app is installed.
 
 .NOTES
