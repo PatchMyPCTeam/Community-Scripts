@@ -55,7 +55,7 @@ param (
 
 Begin {
     
-    $appVersionsArray = $appVersions -split ', ' | ForEach-Object { $_.Trim() } # trim space and convert string to an array
+    $appVersionsArray = $appVersions -split ',' | ForEach-Object { $_.Trim() } # trim space and convert string to an array
     $log = '{0}\Uninstall-Software-{1}.log' -f $env:temp, $app
     $logDetail = '{0}\Uninstall-Software-{1}-detail.log' -f $env:temp, $app
 
@@ -95,28 +95,28 @@ Process {
         $uninstallIss = "$($env:temp)\uninstall.iss"
         Write-Host "Creating $($uninstallIss)"  
         New-Item -Path $uninstallIss -Force | Out-Null
-        Set-Content -Path "$uninstallIss" -Value "[InstallShield Silent]"
-        Add-Content -Path "$uninstallIss" -Value "Version=v7.00"
-        Add-Content -Path "$uninstallIss" -Value "File=Response File"
-        Add-Content -Path "$uninstallIss" -Value "[File Transfer]"
-        Add-Content -Path "$uninstallIss" -Value "OverwrittenReadOnly=NoToAll"
-        Add-Content -Path "$uninstallIss" -Value "[$($appInfo.ProductGuid)-DlgOrder]"
-        Add-Content -Path "$uninstallIss" -Value "Dlg0=$($appInfo.ProductGuid)-SdWelcomeMaint-0"
-        Add-Content -Path "$uninstallIss" -Value "Count=3"
-        Add-Content -Path "$uninstallIss" -Value "Dlg1=$($appInfo.ProductGuid)-MessageBox-0"
-        Add-Content -Path "$uninstallIss" -Value "Dlg2=$($appInfo.ProductGuid)-SdFinishReboot-0"
-        Add-Content -Path "$uninstallIss" -Value "[$($appInfo.ProductGuid)-SdWelcomeMaint-0]"
-        Add-Content -Path "$uninstallIss" -Value "Result=303"
-        Add-Content -Path "$uninstallIss" -Value "[$($appInfo.ProductGuid)-MessageBox-0]"
-        Add-Content -Path "$uninstallIss" -Value "Result=6"
-        Add-Content -Path "$uninstallIss" -Value "[Application]"
-        Add-Content -Path "$uninstallIss" -Value "Name=$($app)"
-        Add-Content -Path "$uninstallIss" -Value "Version=$($appInfo.DisplayVersion)"
-        Add-Content -Path "$uninstallIss" -Value "Company=$($vendor)"
-        Add-Content -Path "$uninstallIss" -Value "Lang=$($lang)"
-        Add-Content -Path "$uninstallIss" -Value "[$($appInfo.ProductGuid)-SdFinishReboot-0]"
-        Add-Content -Path "$uninstallIss" -Value "Result=1"
-        Add-Content -Path "$uninstallIss" -Value "BootOption=0"
+        Set-Content -Path $uninstallIss -Value "[InstallShield Silent]"
+        Add-Content -Path $uninstallIss -Value "Version=v7.00"
+        Add-Content -Path $uninstallIss -Value "File=Response File"
+        Add-Content -Path $uninstallIss -Value "[File Transfer]"
+        Add-Content -Path $uninstallIss -Value "OverwrittenReadOnly=NoToAll"
+        Add-Content -Path $uninstallIss -Value "[$($appInfo.ProductGuid)-DlgOrder]"
+        Add-Content -Path $uninstallIss -Value "Dlg0=$($appInfo.ProductGuid)-SdWelcomeMaint-0"
+        Add-Content -Path $uninstallIss -Value "Count=3"
+        Add-Content -Path $uninstallIss -Value "Dlg1=$($appInfo.ProductGuid)-MessageBox-0"
+        Add-Content -Path $uninstallIss -Value "Dlg2=$($appInfo.ProductGuid)-SdFinishReboot-0"
+        Add-Content -Path $uninstallIss -Value "[$($appInfo.ProductGuid)-SdWelcomeMaint-0]"
+        Add-Content -Path $uninstallIss -Value "Result=303"
+        Add-Content -Path $uninstallIss -Value "[$($appInfo.ProductGuid)-MessageBox-0]"
+        Add-Content -Path $uninstallIss -Value "Result=6"
+        Add-Content -Path $uninstallIss -Value "[Application]"
+        Add-Content -Path $uninstallIss -Value "Name=$($app)"
+        Add-Content -Path $uninstallIss -Value "Version=$($appInfo.DisplayVersion)"
+        Add-Content -Path $uninstallIss -Value "Company=$($vendor)"
+        Add-Content -Path $uninstallIss -Value "Lang=$($lang)"
+        Add-Content -Path $uninstallIss -Value "[$($appInfo.ProductGuid)-SdFinishReboot-0]"
+        Add-Content -Path $uninstallIss -Value "Result=1"
+        Add-Content -Path $uninstallIss -Value "BootOption=0"
 
         Start-Sleep -Seconds 5
         Write-Host "Calling Start-Process to uninstall $($appInfo.DisplayName) $($appInfo.DisplayVersion) using $($uninstallPath) with parameters in $($uninstallIss) and detailed logging in $($logDetail)"
