@@ -100,7 +100,6 @@ function Get-InstalledSoftware {
         [ValidateSet('HKLM', 'HKCU')]
         [String[]]$HivesToSearch
     )
-
     $PathsToSearch = switch -regex ($Architecture) {
         'Both|x86' {
             # IntPtr will be 4 on a 32 bit system, so this add Wow6432Node if script running on 64 bit system
@@ -120,6 +119,7 @@ function Get-InstalledSoftware {
         }
     }
 
+
     $FullPaths = foreach ($PathFragment in $PathsToSearch) {
         switch ($HivesToSearch) {
             'HKLM' {
@@ -137,18 +137,7 @@ function Get-InstalledSoftware {
         Write-Verbose $RegPath
     }
 
-    $PropertyNames = @(
-        'DisplayName',
-        'DisplayVersion',
-        'Publisher', 
-        'InstallDate', 
-        'UninstallString', 
-        'QuietUninstallString', 
-        'SystemComponent',
-        'WindowsInstaller',
-        @{Label = 'RegistryKey'; Expression = { $_.PSChildName } },
-        @{Label = 'RegistryKeyFull'; Expression = { $_.PSPath -replace 'Microsoft.PowerShell.Core\\Registry::' } }
-    )
+    $propertyNames = 'DisplayName', 'DisplayVersion', 'PSChildName', 'Publisher', 'InstallDate', 'QuietUninstallString', 'UninstallString', 'WindowsInstaller', 'SystemComponent'
 
     $AllFoundObjects = Get-ItemProperty -Path $FullPaths -Name $propertyNames -ErrorAction SilentlyContinue
 
@@ -229,17 +218,7 @@ $null = Start-Transcript -Path $log -Append -NoClobber -Force
 
 $VerbosePreference = 'Continue'
 
-Write-Verbose ('Process is 32bit: {0}' -f ([IntPtr]::Size -eq 4))
-Write-Verbose ('Process is 64bit: {0}' -f ([IntPtr]::Size -eq 8))
-Write-Verbose ('Is64BitProcess: {0}' -f [Environment]::Is64BitProcess)
-Write-Verbose ('PROCESSOR_ARCHITECTURE: {0}' -f $env:PROCESSOR_ARCHITECTURE)
-
-[array]$InstalledSoftware = Get-InstalledSoftware -Architecture $Architecture -HivesToSearch $HivesToSearch
-
-Write-Verbose 'Installed software:'
-Write-Verbose ($InstalledSoftware | ConvertTo-Json)
-
-[array]$InstalledSoftware = $InstalledSoftware | 
+[array]$InstalledSoftware = Get-InstalledSoftware -Architecture $Architecture -HivesToSearch $HivesToSearch | 
     Where-Object { 
         $Software = $_
         $_WindowsInstaller = if ($PSBoundParameters.ContainsKey('WindowsInstaller')) {
