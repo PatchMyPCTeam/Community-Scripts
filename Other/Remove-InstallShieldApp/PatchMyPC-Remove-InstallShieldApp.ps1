@@ -1,3 +1,4 @@
+
 <#
 .SYNOPSIS
     Uninstall installshield based software
@@ -10,7 +11,7 @@
 
 .NOTES
     FileName:    PatchMyPC-Remove-InstallShieldApp.ps1
-    Author:      Ben Whitmore @ PatchMyPC
+    Author:      Ben Whitmore, Adam Cook @ PatchMyPC
 
     ################# DISCLAIMER #################
     Patch My PC provides scripts, macro, and other code examples for illustration only, without warranty 
@@ -53,107 +54,106 @@ param (
     [int]$timeToWait = 60
 )
 
-Begin {
-    
-    $appVersionsArray = $appVersions -split ',' | ForEach-Object { $_.Trim() } # trim space and convert string to an array
-    $log = '{0}\Uninstall-Software-{1}.log' -f $env:temp, $app
-    $logDetail = '{0}\Uninstall-Software-{1}-detail.log' -f $env:temp, $app
+   
+$appVersionsArray = $appVersions -split ',' | ForEach-Object { $_.Trim() } # trim space and convert string to an array
+$log = '{0}\Uninstall-Software-{1}.log' -f $env:temp, $app
+$logDetail = '{0}\Uninstall-Software-{1}-detail.log' -f $env:temp, $app
 
-    Write-Host "Starting $($MyInvocation.MyCommand.Name)"
-    Write-Host "Using $($PSVersionTable.PSVersion)"
-    Write-Host "Looking for app $app"
-    Write-Host "Looking for app version to be one of $($appVersions)"
-    Write-Host "Logging to $($log)"
+$null = Start-Transcript -Path $log -Append -NoClobber -Force
 
-    $null = Start-Transcript -Path $log -Append -NoClobber -Force
+Write-Host "Starting $($MyInvocation.MyCommand.Name)"
+Write-Host "Using $($PSVersionTable.PSVersion)"
+Write-Host "Looking for app $app"
+Write-Host "Looking for app version to be one of $($appVersions)"
+Write-Host "Logging to $($log)"
 
-    try {
-        Write-Host "Checking to see if $app is installed"
-        $appInfo = Get-ChildItem -Path "HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall", "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall" | Get-ItemProperty | Where-Object { $_.DisplayName -match $app } | Select-Object -Property DisplayName, DisplayVersion, ProductGuid, LogFile
+try {
+    Write-Host "Checking to see if $app is installed"
+    $appInfo = Get-ChildItem -Path "HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall", "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall" | Get-ItemProperty | Where-Object { $_.DisplayName -match $app } | Select-Object -Property DisplayName, DisplayVersion, ProductGuid, LogFile
         
-        if ([string]::IsNullOrWhiteSpace($appInfo)) {
-            Write-Warning -Message "Cannot to find '$($app)' in the registry. Unable to uninstall"
+    if ([string]::IsNullOrWhiteSpace($appInfo)) {
+        Write-Warning -Message "Cannot to find '$($app)' in the registry. Unable to uninstall"
+        $null = Stop-Transcript
+        Exit 0
+    }
+    else {
+        [string]$appInfo.ProductGuid
+        [version]$appInfo.DisplayVersion
+        [string]$appInfo.LogFile 
+        Write-Host "Found $($appInfo.DisplayName) $($appInfo.DisplayVersion) installed"
+    }
+}
+catch {
+    Write-Warning -Message "Error trying while trying to find $($app). Error: $($_.Exception.Message)"
+}
+
+if ($appVersionsArray -contains $appInfo.DisplayVersion) {
+    $uninstallPath = $($appInfo.LogFile).Replace('setup.ilg', 'setup.exe')
+
+    If (Test-Path -Path $uninstallPath) {
+        Write-Host "Found $($uninstallPath)"
+
+        $uninstallIss = "$($env:temp)\uninstall.iss"
+        Write-Host "Creating $($uninstallIss)"  
+        New-Item -Path $uninstallIss -Force | Out-Null
+        Set-Content -Path $uninstallIss -Value "[InstallShield Silent]"
+        Add-Content -Path $uninstallIss -Value "Version=v7.00"
+        Add-Content -Path $uninstallIss -Value "File=Response File"
+        Add-Content -Path $uninstallIss -Value "[File Transfer]"
+        Add-Content -Path $uninstallIss -Value "OverwrittenReadOnly=NoToAll"
+        Add-Content -Path $uninstallIss -Value "[$($appInfo.ProductGuid)-DlgOrder]"
+        Add-Content -Path $uninstallIss -Value "Dlg0=$($appInfo.ProductGuid)-SdWelcomeMaint-0"
+        Add-Content -Path $uninstallIss -Value "Count=3"
+        Add-Content -Path $uninstallIss -Value "Dlg1=$($appInfo.ProductGuid)-MessageBox-0"
+        Add-Content -Path $uninstallIss -Value "Dlg2=$($appInfo.ProductGuid)-SdFinishReboot-0"
+        Add-Content -Path $uninstallIss -Value "[$($appInfo.ProductGuid)-SdWelcomeMaint-0]"
+        Add-Content -Path $uninstallIss -Value "Result=303"
+        Add-Content -Path $uninstallIss -Value "[$($appInfo.ProductGuid)-MessageBox-0]"
+        Add-Content -Path $uninstallIss -Value "Result=6"
+        Add-Content -Path $uninstallIss -Value "[Application]"
+        Add-Content -Path $uninstallIss -Value "Name=$($app)"
+        Add-Content -Path $uninstallIss -Value "Version=$($appInfo.DisplayVersion)"
+        Add-Content -Path $uninstallIss -Value "Company=$($vendor)"
+        Add-Content -Path $uninstallIss -Value "Lang=$($lang)"
+        Add-Content -Path $uninstallIss -Value "[$($appInfo.ProductGuid)-SdFinishReboot-0]"
+        Add-Content -Path $uninstallIss -Value "Result=1"
+        Add-Content -Path $uninstallIss -Value "BootOption=0"
+
+        Start-Sleep -Seconds 5
+        Write-Host "Calling Start-Process to uninstall $($appInfo.DisplayName) $($appInfo.DisplayVersion) using $($uninstallPath) with parameters in $($uninstallIss) and detailed logging in $($logDetail)"
+        $ArgumentList = @(
+            '-removeall'
+            '-s'
+            '-f1"{0}"' -f $uninstallIss
+            '-f2"{0}"' -f $logDetail
+        )
+        Start-Process -FilePath $uninstallPath -ArgumentList $ArgumentList -Wait -NoNewWindow -PassThru
+        Write-Host "Waiting $($timeToWait) seconds for $($appInfo.DisplayName) $($appInfo.DisplayVersion) to uninstall"
+        Start-Sleep -Seconds $timeToWait
+
+        Write-Host "Checking to see if $($appInfo.DisplayName) $($appInfo.DisplayVersion) was uninstalled"
+        $appInfoTest = Get-ChildItem -Path "HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall", "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall" | Get-ItemProperty | Where-Object { $_.DisplayName -match $app } | Select-Object -Property DisplayName, DisplayVersion, ProductGuid, LogFile
+        if ([string]::IsNullOrWhiteSpace($appInfoTest)) {
+            Write-Host "Successfully uninstalled $app version $($appInfo.DisplayVersion)"
             $null = Stop-Transcript
             Exit 0
         }
         else {
-            [string]$appInfo.ProductGuid
-            [version]$appInfo.DisplayVersion
-            [string]$appInfo.LogFile 
-            Write-Host "Found $($appInfo.DisplayName) $($appInfo.DisplayVersion) installed"
-        }
-    }
-    catch {
-        Write-Warning -Message "Error trying while trying to find $($app). Error: $($_.Exception.Message)"
-    }
-}
-
-Process {
-
-    if ($appVersionsArray -contains $appInfo.DisplayVersion) {
-        $uninstallPath = $($appInfo.LogFile).Replace('setup.ilg', 'setup.exe')
-
-        If (Test-Path -Path $uninstallPath) {
-            Write-Host "Found $($uninstallPath)"
-
-            $uninstallIss = "$($env:temp)\uninstall.iss"
-            Write-Host "Creating $($uninstallIss)"  
-            New-Item -Path $uninstallIss -Force | Out-Null
-            Set-Content -Path $uninstallIss -Value "[InstallShield Silent]"
-            Add-Content -Path $uninstallIss -Value "Version=v7.00"
-            Add-Content -Path $uninstallIss -Value "File=Response File"
-            Add-Content -Path $uninstallIss -Value "[File Transfer]"
-            Add-Content -Path $uninstallIss -Value "OverwrittenReadOnly=NoToAll"
-            Add-Content -Path $uninstallIss -Value "[$($appInfo.ProductGuid)-DlgOrder]"
-            Add-Content -Path $uninstallIss -Value "Dlg0=$($appInfo.ProductGuid)-SdWelcomeMaint-0"
-            Add-Content -Path $uninstallIss -Value "Count=3"
-            Add-Content -Path $uninstallIss -Value "Dlg1=$($appInfo.ProductGuid)-MessageBox-0"
-            Add-Content -Path $uninstallIss -Value "Dlg2=$($appInfo.ProductGuid)-SdFinishReboot-0"
-            Add-Content -Path $uninstallIss -Value "[$($appInfo.ProductGuid)-SdWelcomeMaint-0]"
-            Add-Content -Path $uninstallIss -Value "Result=303"
-            Add-Content -Path $uninstallIss -Value "[$($appInfo.ProductGuid)-MessageBox-0]"
-            Add-Content -Path $uninstallIss -Value "Result=6"
-            Add-Content -Path $uninstallIss -Value "[Application]"
-            Add-Content -Path $uninstallIss -Value "Name=$($app)"
-            Add-Content -Path $uninstallIss -Value "Version=$($appInfo.DisplayVersion)"
-            Add-Content -Path $uninstallIss -Value "Company=$($vendor)"
-            Add-Content -Path $uninstallIss -Value "Lang=$($lang)"
-            Add-Content -Path $uninstallIss -Value "[$($appInfo.ProductGuid)-SdFinishReboot-0]"
-            Add-Content -Path $uninstallIss -Value "Result=1"
-            Add-Content -Path $uninstallIss -Value "BootOption=0"
-
-            Start-Sleep -Seconds 5
-            Write-Host "Calling Start-Process to uninstall $($appInfo.DisplayName) $($appInfo.DisplayVersion) using $($uninstallPath) with parameters in $($uninstallIss) and detailed logging in $($logDetail)"
-            Start-Process -FilePath $uninstallPath -ArgumentList "-removeall -s -f1""$($uninstallIss)"" -f2""$($logDetail)"" -Wait -NoNewWindow -PassThru"
-            Write-Host "Waiting $($timeToWait) seconds for $($appInfo.DisplayName) $($appInfo.DisplayVersion) to uninstall"
-            Start-Sleep -Seconds $timeToWait
-
-            Write-Host "Checking to see if $($appInfo.DisplayName) $($appInfo.DisplayVersion) was uninstalled"
-            $appInfoTest = Get-ChildItem -Path "HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall", "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall" | Get-ItemProperty | Where-Object { $_.DisplayName -match $app } | Select-Object -Property DisplayName, DisplayVersion, ProductGuid, LogFile
-            if ([string]::IsNullOrWhiteSpace($appInfoTest)) {
-                Write-Host "Successfully uninstalled $app version $($appInfo.DisplayVersion)"
-                $null = Stop-Transcript
-                Exit 0
-            }
-            else {
-                Write-Warning -Message "Unable to uninstall $($app)"
-                $null = Stop-Transcript
-                Exit 1
-            }
-        }
-        else {
-            Write-Warning -Message "Unable to find $($uninstallPath). Installation will abort. You may need to manually repair or uninstall $($appInfo.DisplayName) $($appInfo.DisplayVersion)"
+            Write-Warning -Message "Unable to uninstall $($app)"
             $null = Stop-Transcript
             Exit 1
         }
     }
     else {
-        Write-Warning -Message "Unable to find the required version of $($app). Should be one of $($appVersions) but instead we found $($appInfo.DisplayVersion)"
+        Write-Warning -Message "Unable to find $($uninstallPath). Installation will abort. You may need to manually repair or uninstall $($appInfo.DisplayName) $($appInfo.DisplayVersion)"
         $null = Stop-Transcript
-        Exit 0
+        Exit 1
     }
 }
-
-End {
+else {
+    Write-Warning -Message "Unable to find the required version of $($app). Should be one of $($appVersions) but instead we found $($appInfo.DisplayVersion)"
     $null = Stop-Transcript
+    Exit 0
 }
+
+$null = Stop-Transcript
