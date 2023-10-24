@@ -1,0 +1,32 @@
+{
+    "Rules":[
+        { 
+           "SettingName":"Google Chrome",
+           "Operator":"GreaterEquals",
+           "DataType":"Version",
+           "Operand":"116.0.5790.110",
+           "MoreInfoUrl":"https://www.liviubarbat.info",
+           "RemediationStrings":[ 
+              { 
+                 "Language": "en_US",
+                 "Title": "Google Chrome x64 is outdated.",
+                 "Description": "Make sure to patch Google Chrome"
+              }
+           ]
+        },
+        { 
+           "SettingName":"Test App",
+           "Operator":"GreaterEquals",
+           "DataType":"Version",
+           "Operand":"116.0.5790.110",
+           "MoreInfoUrl":"https://www.liviubarbat.info",
+           "RemediationStrings":[ 
+              { 
+                 "Language": "en_US",
+                 "Title": "Test App is either outdated or not installed.",
+                 "Description": "Make sure to install or update it."
+              }
+           ]
+        }
+     ]
+}
