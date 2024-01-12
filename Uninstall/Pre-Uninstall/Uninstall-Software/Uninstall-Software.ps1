@@ -86,6 +86,7 @@ param (
     [Int]$SystemComponent,
 
     [Parameter()]
+    [Alias("AdditionalArguments")]
     [String]$AdditionalMSIArguments,
     
     [Parameter()]
@@ -259,6 +260,14 @@ $VerbosePreference = 'Continue'
 
         $_.DisplayName -like $DisplayName -And $_WindowsInstaller -And $_SystemComponent        
     }
+
+$CommandLine = $MyInvocation.Line
+if (-not [String]::IsNullOrWhiteSpace($AdditionalMSIArguments)){
+    if ( -not($CommandLine -match " -AdditionalMSIArguments ") -and ([String]::IsNullOrWhiteSpace($AdditionalEXEArguments))) {
+        Write-Verbose "AdditionalArguments parameter was supplied and AdditionalEXEArguments is null. Using AdditionalArguments for all uninstalls."
+        $AdditionalEXEArguments = $AdditionalMSIArguments
+    }   
+}
 
 if ($InstalledSoftware.count -eq 0) {
     Write-Verbose ("Software '{0}' not installed" -f $DisplayName)
