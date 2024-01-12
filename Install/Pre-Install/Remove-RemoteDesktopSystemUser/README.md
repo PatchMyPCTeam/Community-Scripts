@@ -1,6 +1,6 @@
 # Remove Microsoft Remote Desktop Client Machine-wide and User installations
 
-This script utilizes the PowerShell App Deployment Toolkit to uninstall ALL previous versions of Microsoft Remote Desktop Client found on a system. This includes all languages as well as User and Machine-Wide installs.
+This script utilizes the PowerShell App Deployment Toolkit to uninstall ALL previous versions of Microsoft Remote Desktop Client found on a system. This includes all languages as well as User and Machine-Wide installs. (Note: the screenshot are for Webex, but the instructions remain the same)
 
 Follow the Instructions below to add this script (and associated files) as a Prescript for the Patch My PC App or Update for Microsoft Remote Desktop Client.
 
