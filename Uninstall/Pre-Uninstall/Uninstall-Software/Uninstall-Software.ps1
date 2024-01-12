@@ -45,6 +45,7 @@
     Specifying a value of 0 will look for software where SystemComponent is equal to 0, or not present at all.
 .PARAMETER AdditionalMSIArguments
     A string which includes the additional parameters you would like passed to the MSI uninstaller.
+    AdditionalArguments is an alias to maintain backwards compatability.
 .PARAMETER AdditionalEXEArguments
     A string which includes the additional parameters you would like passed to the EXE uninstaller.
 .PARAMETER UninstallAll
