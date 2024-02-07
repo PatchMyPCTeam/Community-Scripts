@@ -1,3 +1,10 @@
+---
+external help file:
+Module Name:
+online version:
+schema: 2.0.0
+---
+
 # Uninstall-Software.ps1
 
 ## SYNOPSIS
@@ -5,10 +12,18 @@ Uninstall software based on the DisplayName of said software in the registry
 
 ## SYNTAX
 
+### AdditionalArguments (Default)
 ```
-Uninstall-Software [-DisplayName] <String> [[-Architecture] <String>] [[-HivesToSearch] <String[]>]
- [[-WindowsInstaller] <Int32>] [[-SystemComponent] <Int32>] [[-AdditionalArguments] <String>] [-UninstallAll]
- [<CommonParameters>]
+Uninstall-Software.ps1 -DisplayName <String> [-Architecture <String>] [-HivesToSearch <String[]>]
+ [-WindowsInstaller <Int32>] [-SystemComponent <Int32>] [-AdditionalArguments <String>] [-UninstallAll]
+ [-ProgressAction <ActionPreference>] [<CommonParameters>]
+```
+
+### AdditionalEXEorMSIArguments
+```
+Uninstall-Software.ps1 -DisplayName <String> [-Architecture <String>] [-HivesToSearch <String[]>]
+ [-WindowsInstaller <Int32>] [-SystemComponent <Int32>] [-AdditionalMSIArguments <String>]
+ [-AdditionalEXEArguments <String>] [-UninstallAll] [-ProgressAction <ActionPreference>] [<CommonParameters>]
 ```
 
 ## DESCRIPTION
@@ -48,6 +63,17 @@ Uninstall-Software.ps1 -DisplayName "Mozilla*"
 
 Uninstalls any products where DisplayName starts with "Mozilla"
 
+### EXAMPLE 3
+```
+Uninstall-Software.ps1 -DisplayName "*SomeSoftware*" -AdditionalMSIArguments "/quiet /norestart" -AdditionalEXEArguments "/S" -UninstallAll
+```
+
+Uninstalls all software where DisplayName contains "SomeSoftware". 
+
+For any software found in the registry matching the search criteria and are MSI-based (WindowsInstaller = 1), "/quiet /norestart" will be supplied to the uninstaller.
+
+For any software found in the registry matching the search criteria and  are EXE-based (WindowsInstaller = 0 or non-existent), "/S" will be supplied to the uninstaller.
+
 ## PARAMETERS
 
 ### -DisplayName
@@ -60,7 +86,7 @@ Parameter Sets: (All)
 Aliases:
 
 Required: True
-Position: 1
+Position: Named
 Default value: None
 Accept pipeline input: False
 Accept wildcard characters: False
@@ -79,7 +105,7 @@ Parameter Sets: (All)
 Aliases:
 
 Required: False
-Position: 2
+Position: Named
 Default value: Both
 Accept pipeline input: False
 Accept wildcard characters: False
@@ -97,7 +123,7 @@ Parameter Sets: (All)
 Aliases:
 
 Required: False
-Position: 3
+Position: Named
 Default value: HKLM
 Accept pipeline input: False
 Accept wildcard characters: False
@@ -120,7 +146,7 @@ Parameter Sets: (All)
 Aliases:
 
 Required: False
-Position: 4
+Position: Named
 Default value: 0
 Accept pipeline input: False
 Accept wildcard characters: False
@@ -137,7 +163,7 @@ Parameter Sets: (All)
 Aliases:
 
 Required: False
-Position: 5
+Position: Named
 Default value: 0
 Accept pipeline input: False
 Accept wildcard characters: False
@@ -146,13 +172,53 @@ Accept wildcard characters: False
 ### -AdditionalArguments
 A string which includes the additional parameters you would like passed to the uninstaller.
 
+Cannot be used with -AdditionalMSIArguments or -AdditionalEXEArguments.
+
 ```yaml
 Type: String
-Parameter Sets: (All)
+Parameter Sets: AdditionalArguments
 Aliases:
 
 Required: False
-Position: 6
+Position: Named
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -AdditionalMSIArguments
+A string which includes the additional parameters you would like passed to the MSI uninstaller. 
+
+This is useful if you use this, and (or not at all) -AdditionalEXEArguments, in conjuction with -UninstallAll to apply different parameters for MSI based uninstalls.
+
+Cannot be used with -AdditionalArguments.
+
+```yaml
+Type: String
+Parameter Sets: AdditionalEXEorMSIArguments
+Aliases:
+
+Required: False
+Position: Named
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -AdditionalEXEArguments
+A string which includes the additional parameters you would like passed to the EXE uninstaller.
+
+This is useful if you use this, and (or not at all) -AdditionalMSIArguments, in conjuction with -UninstallAll to apply different parameters for EXE based uninstalls.
+
+Cannot be used with -AdditionalArguments.
+
+```yaml
+Type: String
+Parameter Sets: AdditionalEXEorMSIArguments
+Aliases:
+
+Required: False
+Position: Named
 Default value: None
 Accept pipeline input: False
 Accept wildcard characters: False
@@ -173,6 +239,21 @@ Aliases:
 Required: False
 Position: Named
 Default value: False
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -ProgressAction
+{{ Fill ProgressAction Description }}
+
+```yaml
+Type: ActionPreference
+Parameter Sets: (All)
+Aliases: proga
+
+Required: False
+Position: Named
+Default value: None
 Accept pipeline input: False
 Accept wildcard characters: False
 ```
