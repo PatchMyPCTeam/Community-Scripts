@@ -43,11 +43,22 @@
     Specify a value between 1 and 0 to use as an additional criteria when trying to find installed software.
 
     Specifying a value of 0 will look for software where SystemComponent is equal to 0, or not present at all.
+.PARAMETER AdditionalArguments
+    A string which includes the additional parameters you would like passed to the uninstaller.
+
+    Cannot be used with -AdditionalMSIArguments or -AdditionalEXEArguments.
 .PARAMETER AdditionalMSIArguments
-    A string which includes the additional parameters you would like passed to the MSI uninstaller.
-    AdditionalArguments is an alias to maintain backwards compatability.
+    A string which includes the additional parameters you would like passed to the MSI uninstaller. 
+    
+    This is useful if you use this, and (or not at all) -AdditionalEXEArguments, in conjuction with -UninstallAll to apply different parameters for MSI based uninstalls.
+
+    Cannot be used with -AdditionalArguments.
 .PARAMETER AdditionalEXEArguments
     A string which includes the additional parameters you would like passed to the EXE uninstaller.
+
+    This is useful if you use this, and (or not at all) -AdditionalMSIArguments, in conjuction with -UninstallAll to apply different parameters for EXE based uninstalls.
+
+    Cannot be used with -AdditionalArguments.
 .PARAMETER UninstallAll
     This switch will uninstall all software matching the search criteria of -DisplayName, -WindowsInstaller, and -SystemComponent.
 
@@ -64,8 +75,16 @@
     PS C:\> Uninstall-Software.ps1 -DisplayName "Mozilla*"
 
     Uninstalls any products where DisplayName starts with "Mozilla"
+.EXAMPLE
+    PS C:\> Uninstall-Software.ps1 -DisplayName "*SomeSoftware*" -AdditionalMSIArguments "/quiet /norestart" -AdditionalEXEArguments "/S" -UninstallAll
+
+    Uninstalls all software where DisplayName contains "SomeSoftware". 
+    
+    For any software found in the registry matching the search criteria and are MSI-based (WindowsInstaller = 1), "/quiet /norestart" will be supplied to the uninstaller.
+    
+    For any software found in the registry matching the search criteria and  are EXE-based (WindowsInstaller = 0 or non-existent), "/S" will be supplied to the uninstaller.
 #>
-[CmdletBinding()]
+[CmdletBinding(DefaultParameterSetName = 'AdditionalArguments')]
 param (
     [Parameter(Mandatory)]
     [String]$DisplayName,
@@ -86,11 +105,13 @@ param (
     [ValidateSet(1, 0)]
     [Int]$SystemComponent,
 
-    [Parameter()]
-    [Alias("AdditionalArguments")]
+    [Parameter(ParameterSetName = 'AdditionalArguments')]
+    [String]$AdditionalArguments,
+
+    [Parameter(ParameterSetName = 'AdditionalEXEorMSIArguments')]
     [String]$AdditionalMSIArguments,
     
-    [Parameter()]
+    [Parameter(ParameterSetName = 'AdditionalEXEorMSIArguments')]
     [String]$AdditionalEXEArguments,
 
     [Parameter()]
@@ -163,6 +184,9 @@ function Uninstall-Software {
         [PSCustomObject]$Software,
 
         [Parameter()]
+        [String]$AdditionalArguments,
+
+        [Parameter()]
         [String]$AdditionalMSIArguments,
 
         [Parameter()]
@@ -188,8 +212,12 @@ function Uninstall-Software {
                 ErrorAction  = $ErrorActionPreference
             }
 
-            if (-not [String]::IsNullOrWhiteSpace($AdditionalMSIArguments)) {
-                Write-Verbose ('Adding additional arguments "{0}" to uninstall string' -f $AdditionalMSIArguments)
+            if (-not [String]::IsNullOrWhiteSpace($AdditionalArguments)) {
+                Write-Verbose ('Adding additional arguments "{0}" to uninstall string' -f $AdditionalArguments)
+                $StartProcessSplat['ArgumentList'] = $StartProcessSplat['ArgumentList'] += $AdditionalArguments
+            }
+            elseif (-not [String]::IsNullOrWhiteSpace($AdditionalMSIArguments)) {
+                Write-Verbose ('Adding additional MSI arguments "{0}" to uninstall string' -f $AdditionalMSIArguments)
                 $StartProcessSplat['ArgumentList'] = $StartProcessSplat['ArgumentList'] += $AdditionalMSIArguments
             }
 
@@ -200,25 +228,25 @@ function Uninstall-Software {
         else { 
             Write-Verbose ("Could not parse product code from '{0}'" -f $Software.UninstallString)
             if (-not [String]::IsNullOrWhiteSpace($Software.QuietUninstallString)) {
-                if (-not [String]::IsNullOrWhiteSpace($AdditionalEXEArguments)) {
-                    Write-Verbose ('Adding additional arguments "{0}" to QuietUninstallString' -f $AdditionalEXEArguments)
-                    $Software.QuietUninstallString = '{0} {1}' -f $Software.QuietUninstallString, $AdditionalEXEArguments
-                }
-
-                Write-Verbose ("Trying QuietUninstallString '{0}'" -f $Software.QuietUninstallString)
-                Invoke-Expression "& $($Software.QuietUninstallString)" -ErrorAction $ErrorActionPreference
+                $UninstallString = $Software.QuietUninstallString
+                Write-Verbose ("Found QuietUninstallString '{0}'" -f $Software.QuietUninstallString)
             }
             else {
-                Write-Verbose ("Trying UninstallString '{0}'" -f $Software.UninstallString)
-
-                if (-not [String]::IsNullOrWhiteSpace($AdditionalEXEArguments)) {
-                    Write-Verbose ("Adding additional arguments '{0}' to UninstallString" -f $AdditionalEXEArguments)
-                    $Software.UninstallString = "{0} {1}" -f $Software.UninstallString, $AdditionalEXEArguments
-                }
-
-                Write-Verbose ("Trying UninstallString '{0}'" -f $Software.UninstallString)
-                Invoke-Expression "& $($Software.UninstallString)" -ErrorAction $ErrorActionPreference
+                $UninstallString = $Software.UninstallString
+                Write-Verbose ("Found UninstallString '{0}'" -f $Software.UninstallString)
             }
+
+            if (-not [String]::IsNullOrWhiteSpace($AdditionalArguments)) {
+                Write-Verbose ("Adding additional arguments '{0}' to UninstallString" -f $AdditionalArguments)
+                $UninstallString = "{0} {1}" -f $UninstallString, $AdditionalArguments
+            }
+            elseif (-not [String]::IsNullOrWhiteSpace($AdditionalEXEArguments)) {
+                Write-Verbose ("Adding additional EXE arguments '{0}' to UninstallString" -f $AdditionalEXEArguments)
+                $UninstallString = "{0} {1}" -f $UninstallString, $AdditionalEXEArguments
+            }
+
+            Write-Verbose ("Trying uninstall with '{0}'" -f $UninstallString)
+            Invoke-Expression "& $UninstallString" -ErrorAction $ErrorActionPreference
         }
     }
 }
@@ -227,6 +255,13 @@ $log = '{0}\Uninstall-Software-{1}.log' -f $env:temp, $DisplayName.Replace(' ','
 $null = Start-Transcript -Path $log -Append -NoClobber -Force
 
 $VerbosePreference = 'Continue'
+
+$UninstallSoftwareSplat = @{
+    AdditionalArguments    = $AdditionalArguments
+    AdditionalMSIArguments = $AdditionalMSIArguments
+    AdditionalEXEArguments = $AdditionalEXEArguments
+    ErrorAction            = $ErrorActionPreference
+}
 
 [array]$InstalledSoftware = Get-InstalledSoftware -Architecture $Architecture -HivesToSearch $HivesToSearch | 
     Where-Object { 
@@ -262,21 +297,13 @@ $VerbosePreference = 'Continue'
         $_.DisplayName -like $DisplayName -And $_WindowsInstaller -And $_SystemComponent        
     }
 
-$CommandLine = $MyInvocation.Line
-if (-not [String]::IsNullOrWhiteSpace($AdditionalMSIArguments)){
-    if ( -not($CommandLine -match " -AdditionalMSIArguments ") -and ([String]::IsNullOrWhiteSpace($AdditionalEXEArguments))) {
-        Write-Verbose "AdditionalArguments parameter was supplied and AdditionalEXEArguments is null. Using AdditionalArguments for all uninstalls."
-        $AdditionalEXEArguments = $AdditionalMSIArguments
-    }   
-}
-
 if ($InstalledSoftware.count -eq 0) {
     Write-Verbose ("Software '{0}' not installed" -f $DisplayName)
 }
 elseif ($InstalledSoftware.count -gt 1) {
     if ($UninstallAll.IsPresent) {
         foreach ($Software in $InstalledSoftware) {
-            Uninstall-Software -Software $Software -AdditionalMSIArguments $AdditionalMSIArguments -AdditionalEXEArguments $AdditionalEXEArguments -ErrorAction $ErrorActionPreference
+            Uninstall-Software -Software $Software @UninstallSoftwareSplat
        }
     }
     else {
@@ -284,7 +311,7 @@ elseif ($InstalledSoftware.count -gt 1) {
     }
 }
 else {
-    Uninstall-Software -Software $InstalledSoftware[0] -AdditionalMSIArguments $AdditionalMSIArguments -AdditionalEXEArguments $AdditionalEXEArguments -ErrorAction $ErrorActionPreference
+    Uninstall-Software -Software $InstalledSoftware[0] @UninstallSoftwareSplat
 }
 
 $null = Stop-Transcript

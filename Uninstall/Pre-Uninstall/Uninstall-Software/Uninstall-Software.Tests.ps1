@@ -91,7 +91,33 @@ Describe 'Uninstall-Software.ps1' {
     }
 
     it 'will only uninstall the visible component in ARP' {
-        Mock Invoke-Expression {} -Verifiable -ParameterFilter { $Software.UninstallString -eq '"C:\Program Files\Zscaler\ZSAInstaller\uninstall.exe" /S' }
+        Mock Invoke-Expression {} -Verifiable -ParameterFilter { $UninstallString -eq '"C:\Program Files\Zscaler\ZSAInstaller\uninstall.exe" /S' }
         .\Uninstall-Software.ps1 -DisplayName 'Zscaler' -Architecture 'x64' -HivesToSearch 'HKLM' -WindowsInstaller 0 -SystemComponent 0 -AdditionalArguments '/S' | Should -InvokeVerifiable
+    }
+
+    it 'will uninstall both MSI and EXE 7-Zip because the -UninstallAll with -AdditionalArguments is used' {
+        Mock Start-Process {} -Verifiable -ParameterFilter { 
+            $StartProcessSplat['FilePath'] -eq 'msiexec.exe' -and 
+            $ProductCode -eq '{23170F69-40C1-2702-2201-000001000000}' -and 
+            $StartProcessSplat['ArgumentList'] -contains '/FakeParameter' 
+        }
+        Mock Invoke-Expression {} -Verifiable -ParameterFilter { $UninstallString -eq '"C:\Program Files\7-Zip\Uninstall.exe" /S /FakeParameter' }
+
+        .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -Architecture 'x64' -HivesToSearch 'HKLM' -UninstallAll -AdditionalArguments '/FakeParameter' | Should -InvokeVerifiable
+    }
+
+    it 'will uninstall both MSI and EXE 7-Zip because the -UninstallAll with -AdditionalMSIArguments and -AdditionalEXEArguments is used' {
+        Mock Start-Process {} -Verifiable -ParameterFilter { 
+            $StartProcessSplat['FilePath'] -eq 'msiexec.exe' -and 
+            $ProductCode -eq '{23170F69-40C1-2702-2201-000001000000}' -and 
+            $StartProcessSplat['ArgumentList'] -contains 'MSIRMSHUTDOWN=0' 
+        }
+        Mock Invoke-Expression {} -Verifiable -ParameterFilter { $UninstallString -eq '"C:\Program Files\7-Zip\Uninstall.exe" /S /FakeParameter' }
+
+        .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -Architecture 'x64' -HivesToSearch 'HKLM' -UninstallAll -AdditionalEXEArguments '/FakeParameter' -AdditionalMSIArguments 'MSIRMSHUTDOWN=0' | Should -InvokeVerifiable
+    }
+
+    it 'will verify parameter set validation for -AdditionalArguments, -AdditionalEXEArguments, and -AdditionalMSIArguments' {
+        { .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -Architecture 'x64' -HivesToSearch 'HKLM' -AdditionalArguments '/FakeParameter' -AdditionalEXEArguments '/FakeParameter' -AdditionalMSIArguments 'MSIRMSHUTDOWN=0' } | Should -Throw -ExceptionType ([System.Management.Automation.ParameterBindingException])
     }
 }
