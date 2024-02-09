@@ -146,6 +146,8 @@ Accept wildcard characters: False
 ### -AdditionalArguments
 A string which includes the additional parameters you would like passed to the uninstaller.
 
+Cannot be used with -AdditionalMSIArguments or -AdditionalEXEArguments.
+
 ```yaml
 Type: String
 Parameter Sets: (All)
@@ -153,6 +155,44 @@ Aliases:
 
 Required: False
 Position: 6
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -AdditionalMSIArguments
+A string which includes the additional parameters you would like passed to the MSI uninstaller. 
+    
+This is useful if you use this, and (or not at all) -AdditionalEXEArguments, in conjuction with -UninstallAll to apply different parameters for MSI based uninstalls.
+
+Cannot be used with -AdditionalArguments.
+
+```yaml
+Type: String
+Parameter Sets: (All)
+Aliases:
+
+Required: False
+Position: 7
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -AdditionalEXEArguments
+A string which includes the additional parameters you would like passed to the EXE uninstaller.
+    
+This is useful if you use this, and (or not at all) -AdditionalMSIArguments, in conjuction with -UninstallAll to apply different parameters for EXE based uninstalls.
+
+Cannot be used with -AdditionalArguments.
+
+```yaml
+Type: String
+Parameter Sets: (All)
+Aliases:
+
+Required: False
+Position: 8
 Default value: None
 Accept pipeline input: False
 Accept wildcard characters: False
