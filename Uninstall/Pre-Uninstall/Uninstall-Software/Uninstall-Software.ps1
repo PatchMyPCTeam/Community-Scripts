@@ -11,13 +11,21 @@
     (provided by the Patch My PC catalogue).
 
     The script searches the registry for installed software, matching the supplied DisplayName value in the -DisplayName parameter
-    with that of the DisplayName in the registry. If one match is found, it uninstalls the software using the UninstallString. 
+    with that of the DisplayName in the registry. If one match is found, it uninstalls the software using the QuietUninstallString or UninstallString.
+    
+    You can supply additional arguments to the uninstaller using the -AdditionalArguments, -AdditionalMSIArguments, or -AdditionalEXEArguments parameters.
 
-    If a product code is not in the UninstallString, the whole value in QuietUninstallString is used, or just UninstallString if QuietUninstallString doesn't exist.
+    You cannot use -AdditionalArguments with -AdditionalMSIArguments or -AdditionalEXEArguments.
 
-    If more than one matches of the DisplayName occurs, uninstall is not possible.
+    If a product code is not in the UninstallString, QuietUninstallString or UninstallString are used. QuietUninstallString is preferred if it exists.
+
+    If more than one matches of the DisplayName occurs, uninstall is not possible unless you use the -UninstallAll switch.
 
     If QuietUninstallString and UninstallString is not present or null, uninstall is not possible.
+
+    A log file is created in the temp directory with the name "Uninstall-Software-<DisplayName>.log" which contains the verbose output of the script.
+
+    An .msi log file is created in the temp directory with the name "<DisplayName>_<DisplayVersion>.msi.log" which contains the verbose output of the msiexec.exe process.
 .PARAMETER DisplayName
     The name of the software you wish to uninstall as it appears in the registry as its DisplayName value. * wildcard supported.
 .PARAMETER Architecture
@@ -176,6 +184,53 @@ function Get-InstalledSoftware {
     }
 }
 
+function Split-UninstallString {
+    param(
+        [Parameter(Mandatory)]
+        [String]$UninstallString
+    )
+
+    # Example UninstallStrings:
+    # "C:\Program Files\7-Zip\Uninstall.exe" /S /abc /whatever
+    # C:\Program Files\7-Zip\Uninstall.exe /S
+    # C:\Program Files\7-Zip.exe.exe\Uninstall.exe /S /abc /whatever
+    # "C:\Program Files\7-Zip.exe.exe\Uninstall.exe" /S /abc /whatever
+    # C:\Program Files\7-Zip.exe\Uninstall.exe.exe /S /abc /whatever
+    # "C:\Program Files\7-Zip.exe\Uninstall.exe.exe" /S /abc /whatever
+    # C:\Program Files\7-Zip\Uninstall.exe.exe /S /abc /whatever
+    # "C:\Program Files\7-Zip\Uninstall.exe.exe" /S /abc /whatever
+    # C:\Program Files\7-Zip\Uninstall.exe
+    # "C:\Program Files\7-Zip\Uninstall.exe"
+    # C:\Program Files\7-Zip\Uninstall.exe.exe
+    # "C:\Program Files\7-Zip\Uninstall.exe.exe"
+    # C:\Program Files\7-Zip.exe\Uninstall.exe
+    # "C:\Program Files\7-Zip.exe\Uninstall.exe"
+
+    if ($UninstallString.StartsWith('"')) {
+        [Int]$EndOfFilePath = [String]::Join('', $UninstallString[1..$UninstallString.Length]).IndexOf('"')
+        [String]$FilePath   = [String]::Join('', $UninstallString[0..$EndOfFilePath]).Trim(' ','"')
+
+        [Int]$StartOfArguments = $EndOfFilePath + 2
+        [String]$Arguments     = [String]::Join('', $UninstallString[$StartOfArguments..$UninstallString.Length]).Trim()
+    }
+    else {
+        for($i = 0; $i -lt $UninstallString.Length - 3; $i++) {
+            if ($UninstallString.Substring($i, 4) -eq '.exe') {
+                # If the character after .exe is null or whitespace, then with reasoanbly high confidence we have found the end of the file path
+                if ([String]::IsNullOrWhiteSpace($UninstallString[$i + 4])) {
+                    $EndOfFilePath = $i + 4
+                    break
+                }
+            }
+        }
+
+        $FilePath  = [String]::Join('', $UninstallString[0..$EndOfFilePath]).Trim(' ','"')
+        $Arguments = [String]::Join('', $UninstallString[$EndOfFilePath..$UninstallString.Length]).Trim()
+    }
+
+    return $FilePath, $Arguments
+}
+
 function Uninstall-Software {
     # Specifically written to take an input object made by Get-InstalledSoftware in this same script file
     [CmdletBinding()]
@@ -204,9 +259,11 @@ function Uninstall-Software {
         if ($ProductCode) { 
             Write-Verbose ("Found product code, will uninstall using '{0}'" -f $ProductCode)
 
+            $MsiLog = '{0}\{1}_{2}.msi.log' -f $env:temp, $Software.DisplayName.Replace(' ','_'), $Software.DisplayVersion.Split([System.IO.Path]::GetInvalidFileNameChars()) -join ''
+
             $StartProcessSplat = @{
-                FilePath     = "msiexec.exe"
-                ArgumentList = "/x", $ProductCode, "/qn", "REBOOT=ReallySuppress"
+                FilePath     = 'msiexec.exe'
+                ArgumentList = '/x', $ProductCode, '/qn', 'REBOOT=ReallySuppress', '/l*v {0}' -f $MsiLog
                 Wait         = $true
                 PassThru     = $true
                 ErrorAction  = $ErrorActionPreference
@@ -221,12 +278,11 @@ function Uninstall-Software {
                 $StartProcessSplat['ArgumentList'] = $StartProcessSplat['ArgumentList'] += $AdditionalMSIArguments
             }
 
-            Write-Verbose ("Trying uninstall with 'msiexec.exe {0}'" -f [String]$StartProcessSplat['ArgumentList'])
-            $proc = Start-Process @StartProcessSplat
-            return $proc.ExitCode
+            $Message = "Trying uninstall with 'msiexec.exe {0}'" -f [String]$StartProcessSplat['ArgumentList']
         } 
         else { 
             Write-Verbose ("Could not parse product code from '{0}'" -f $Software.UninstallString)
+
             if (-not [String]::IsNullOrWhiteSpace($Software.QuietUninstallString)) {
                 $UninstallString = $Software.QuietUninstallString
                 Write-Verbose ("Found QuietUninstallString '{0}'" -f $Software.QuietUninstallString)
@@ -236,23 +292,43 @@ function Uninstall-Software {
                 Write-Verbose ("Found UninstallString '{0}'" -f $Software.UninstallString)
             }
 
+            $FilePath, $Arguments = Split-UninstallString $UninstallString
+
+            $StartProcessSplat = @{
+                FilePath     = $FilePath
+                Wait         = $true
+                PassThru     = $true
+                ErrorAction  = $ErrorActionPreference
+            }
+
             if (-not [String]::IsNullOrWhiteSpace($AdditionalArguments)) {
                 Write-Verbose ("Adding additional arguments '{0}' to UninstallString" -f $AdditionalArguments)
-                $UninstallString = "{0} {1}" -f $UninstallString, $AdditionalArguments
+                $Arguments = "{0} {1}" -f $Arguments, $AdditionalArguments
             }
             elseif (-not [String]::IsNullOrWhiteSpace($AdditionalEXEArguments)) {
                 Write-Verbose ("Adding additional EXE arguments '{0}' to UninstallString" -f $AdditionalEXEArguments)
-                $UninstallString = "{0} {1}" -f $UninstallString, $AdditionalEXEArguments
+                $Arguments = "{0} {1}" -f $Arguments, $AdditionalEXEArguments
             }
 
-            Write-Verbose ("Trying uninstall with '{0}'" -f $UninstallString)
-            Invoke-Expression "& $UninstallString" -ErrorAction $ErrorActionPreference
+            if (-not [String]::IsNullOrWhiteSpace($Arguments)) {
+                $StartProcessSplat['ArgumentList'] = $Arguments.Trim()
+                $Message = "Trying uninstall with '{0} {1}'" -f $FilePath, $StartProcessSplat['ArgumentList']
+            }
+            else {
+                $Message = "Trying uninstall with '{0}'" -f $FilePath
+            }
         }
+
+        Write-Verbose $Message
+        $proc = Start-Process @StartProcessSplat
+        Write-Verbose ('Exit code: {0}' -f $proc.ExitCode)
+        return $proc.ExitCode
     }
 }
 
 $log = '{0}\Uninstall-Software-{1}.log' -f $env:temp, $DisplayName.Replace(' ','_').Replace('*','')
 $null = Start-Transcript -Path $log -Append -NoClobber -Force
+
 
 $VerbosePreference = 'Continue'
 

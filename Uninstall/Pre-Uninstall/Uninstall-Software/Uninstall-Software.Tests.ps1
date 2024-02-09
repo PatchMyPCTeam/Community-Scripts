@@ -61,58 +61,81 @@ BeforeAll {
 
 Describe 'Uninstall-Software.ps1' {
     it 'will call msiexec.exe for an MSI product' {
-        Mock Start-Process {} -Verifiable -ParameterFilter { $FilePath -eq 'msiexec.exe' -and $ProductCode -eq '{23170F69-40C1-2702-2201-000001000000}' }
+        Mock Start-Process {} -Verifiable -ParameterFilter { 
+            $FilePath -eq 'msiexec.exe' -and 
+            $ProductCode -eq '{23170F69-40C1-2702-2201-000001000000}' 
+        }
+
         .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -Architecture 'x64' -HivesToSearch 'HKLM' -WindowsInstaller 1 -SystemComponent 0 | Should -InvokeVerifiable
     }
 
     it 'will call QuietUninstallString for an EXE product' {
-        Mock Invoke-Expression {} -Verifiable -ParameterFilter { $Software.QuietUninstallString -eq '"C:\Program Files\7-Zip\Uninstall.exe" /S' }
+        Mock Start-Process {} -Verifiable -ParameterFilter { 
+            $FilePath -eq 'C:\Program Files\7-Zip\Uninstall.exe' -and 
+            $ArgumentList -eq '/S' 
+        }
+
         .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -Architecture 'x64' -HivesToSearch 'HKLM' -WindowsInstaller 0 -SystemComponent 0 | Should -InvokeVerifiable
     }
 
     it 'will not uninstall any software because it could not find any' {
-        .\Uninstall-Software.ps1 -DisplayName 'idonotexist' -Architecture 'x64' -HivesToSearch 'HKLM' -WindowsInstaller 1 -SystemComponent 1 | Should -Invoke -CommandName 'Invoke-Expression' -Times 0
         .\Uninstall-Software.ps1 -DisplayName 'idonotexist' -Architecture 'x64' -HivesToSearch 'HKLM' -WindowsInstaller 1 -SystemComponent 1 | Should -Invoke -CommandName 'Start-Process' -Times 0
     }
 
     it 'will not uninstall any software because multiple are found and -UninstallAll is not used' {
-        .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -Architecture 'x64' -HivesToSearch 'HKLM' | Should -Invoke -CommandName 'Invoke-Expression' -Times 0
         .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -Architecture 'x64' -HivesToSearch 'HKLM' | Should -Invoke -CommandName 'Start-Process' -Times 0
     }
 
     it 'will uninstall both MSI and EXE 7-Zip because the -UninstallAll is used' {
-        .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -Architecture 'x64' -HivesToSearch 'HKLM' -UninstallAll | Should -Invoke -CommandName 'Invoke-Expression' -Times 1
-        .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -Architecture 'x64' -HivesToSearch 'HKLM' -UninstallAll | Should -Invoke -CommandName 'Start-Process' -Times 1
+        .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -Architecture 'x64' -HivesToSearch 'HKLM' -UninstallAll | Should -Invoke -CommandName 'Start-Process' -Times 2
     }
 
     it 'will only uninstall the non-visible component in ARP' {
-        Mock Start-Process {} -Verifiable -ParameterFilter { $FilePath -eq 'msiexec.exe' -and $ProductCode -eq '{FF4D5F84-0CFF-4865-8395-51445340F429}' }
+        Mock Start-Process {} -Verifiable -ParameterFilter { 
+            $FilePath -eq 'msiexec.exe' -and 
+            $ProductCode -eq '{FF4D5F84-0CFF-4865-8395-51445340F429}' 
+        }
         .\Uninstall-Software.ps1 -DisplayName 'Zscaler' -Architecture 'x64' -HivesToSearch 'HKLM' -WindowsInstaller 1 -SystemComponent 1 | Should -InvokeVerifiable
     }
 
     it 'will only uninstall the visible component in ARP' {
-        Mock Invoke-Expression {} -Verifiable -ParameterFilter { $UninstallString -eq '"C:\Program Files\Zscaler\ZSAInstaller\uninstall.exe" /S' }
+        Mock Start-Process {} -Verifiable -ParameterFilter { 
+            $FilePath -eq 'C:\Program Files\Zscaler\ZSAInstaller\uninstall.exe' -and 
+            $ArgumentList -eq '/S' 
+        }
         .\Uninstall-Software.ps1 -DisplayName 'Zscaler' -Architecture 'x64' -HivesToSearch 'HKLM' -WindowsInstaller 0 -SystemComponent 0 -AdditionalArguments '/S' | Should -InvokeVerifiable
     }
 
     it 'will uninstall both MSI and EXE 7-Zip because the -UninstallAll with -AdditionalArguments is used' {
         Mock Start-Process {} -Verifiable -ParameterFilter { 
-            $StartProcessSplat['FilePath'] -eq 'msiexec.exe' -and 
+            $FilePath -eq 'msiexec.exe' -and 
             $ProductCode -eq '{23170F69-40C1-2702-2201-000001000000}' -and 
-            $StartProcessSplat['ArgumentList'] -contains '/FakeParameter' 
+            $ArgumentList -contains '/FakeParameter' 
         }
-        Mock Invoke-Expression {} -Verifiable -ParameterFilter { $UninstallString -eq '"C:\Program Files\7-Zip\Uninstall.exe" /S /FakeParameter' }
+
+        .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -Architecture 'x64' -HivesToSearch 'HKLM' -UninstallAll -AdditionalArguments '/FakeParameter' | Should -InvokeVerifiable
+
+        Mock Start-Process {} -Verifiable -ParameterFilter { 
+            $FilePath -eq 'C:\Program Files\7-Zip\Uninstall.exe' -and 
+            $ArgumentList -eq '/S /FakeParameter' 
+        }
 
         .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -Architecture 'x64' -HivesToSearch 'HKLM' -UninstallAll -AdditionalArguments '/FakeParameter' | Should -InvokeVerifiable
     }
 
     it 'will uninstall both MSI and EXE 7-Zip because the -UninstallAll with -AdditionalMSIArguments and -AdditionalEXEArguments is used' {
         Mock Start-Process {} -Verifiable -ParameterFilter { 
-            $StartProcessSplat['FilePath'] -eq 'msiexec.exe' -and 
+            $FilePath -eq 'msiexec.exe' -and 
             $ProductCode -eq '{23170F69-40C1-2702-2201-000001000000}' -and 
-            $StartProcessSplat['ArgumentList'] -contains 'MSIRMSHUTDOWN=0' 
+            $ArgumentList -contains 'MSIRMSHUTDOWN=0' 
         }
-        Mock Invoke-Expression {} -Verifiable -ParameterFilter { $UninstallString -eq '"C:\Program Files\7-Zip\Uninstall.exe" /S /FakeParameter' }
+
+        .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -Architecture 'x64' -HivesToSearch 'HKLM' -UninstallAll -AdditionalEXEArguments '/FakeParameter' -AdditionalMSIArguments 'MSIRMSHUTDOWN=0' | Should -InvokeVerifiable
+
+        Mock Start-Process {} -Verifiable -ParameterFilter { 
+            $FilePath -eq 'C:\Program Files\7-Zip\Uninstall.exe' -and
+            $ArgumentList -eq '/S /FakeParameter'
+        }
 
         .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -Architecture 'x64' -HivesToSearch 'HKLM' -UninstallAll -AdditionalEXEArguments '/FakeParameter' -AdditionalMSIArguments 'MSIRMSHUTDOWN=0' | Should -InvokeVerifiable
     }
