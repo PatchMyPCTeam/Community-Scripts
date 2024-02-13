@@ -73,6 +73,14 @@
     -DisplayName allows wildcards, and if there are multiple matches based on the wild card, this switch will uninstall matching software.
 
     Without this parameter, the script will do nothing if there are multiple matches found.
+.PARAMETER ProcessName
+    Wait for this process to finish after the uninstallation has started.
+    
+    If the process is already running before the uninstallation has even started, the script will quit with an error.
+
+    This is useful for some software which spawn a seperate process to do the uninstallation, and the main process exits before the uninstallation is finished.
+
+    The .exe extension is not required, and the process name is case-insensitive.
 .EXAMPLE
     PS C:\> Uninstall-Software.ps1 -DisplayName "Greenshot"
     
@@ -91,6 +99,10 @@
     For any software found in the registry matching the search criteria and are MSI-based (WindowsInstaller = 1), "/quiet /norestart" will be supplied to the uninstaller.
     
     For any software found in the registry matching the search criteria and  are EXE-based (WindowsInstaller = 0 or non-existent), "/S" will be supplied to the uninstaller.
+.EXAMPLE
+    PS C:\> Uninstall-Software.ps1 -DisplayName "KiCad*" -ProcessName "Un_A"
+
+    Uninstalls KiCad and waits for the process "Un_A" to finish after the uninstallation has started.
 #>
 [CmdletBinding(DefaultParameterSetName = 'AdditionalArguments')]
 param (
@@ -123,7 +135,10 @@ param (
     [String]$AdditionalEXEArguments,
 
     [Parameter()]
-    [Switch]$UninstallAll
+    [Switch]$UninstallAll,
+
+    [Parameter()]
+    [String]$ProcessName
 )
 
 function Get-InstalledSoftware {
@@ -229,7 +244,10 @@ function Uninstall-Software {
         [String]$AdditionalMSIArguments,
 
         [Parameter()]
-        [String]$AdditionalEXEArguments
+        [String]$AdditionalEXEArguments,
+
+        [Parameter()]
+        [String]$UninstallProcessName
     )
 
     Write-Verbose ("Found '{0}':" -f $Software.DisplayName)
@@ -304,15 +322,34 @@ function Uninstall-Software {
         }
 
         Write-Verbose $Message
-        $proc = Start-Process @StartProcessSplat
-        Write-Verbose ('Exit code: {0}' -f $proc.ExitCode)
-        return $proc.ExitCode
+
+        $Process = Start-Process @StartProcessSplat
+        $Duration = $Process.ExitTime - $Process.StartTime
+        Write-Verbose ('Exit code "{0}", duration "{1}"' -f $Process.ExitCode, $Duration)
+
+        if ($PSBoundParameters.ContainsKey('UninstallProcessName')) {
+            Start-Sleep -Seconds 10
+            try {
+                Write-Verbose ('Waiting for process "{0}" to finish' -f $UninstallProcessName)
+                Wait-Process -Name $UninstallProcessName -Timeout 1800 -ErrorAction 'Stop'
+            }
+            catch {
+                if ($_.Exception.Message -match 'Cannot find a process with the name') {
+                    Write-Verbose $_.Exception.Message.Replace('Verify the process name and call the cmdlet again.')
+                }
+                else {
+                    throw
+                }
+            }
+
+        }
+
+        return $Process.ExitCode
     }
 }
 
 $log = '{0}\Uninstall-Software-{1}.log' -f $env:temp, $DisplayName.Replace(' ','_').Replace('*','')
 $null = Start-Transcript -Path $log -Append -NoClobber -Force
-
 
 $VerbosePreference = 'Continue'
 
@@ -321,6 +358,26 @@ $UninstallSoftwareSplat = @{
     AdditionalMSIArguments = $AdditionalMSIArguments
     AdditionalEXEArguments = $AdditionalEXEArguments
     ErrorAction            = $ErrorActionPreference
+}
+
+if ($PSBoundParameters.ContainsKey('ProcessName')) {
+    $Processes = Get-Process
+
+    if ($Processes.Name -contains $ProcessName) {
+        $Message = "Process '{0}' is already running before the uninstallation has even started, quitting" -f $ProcessName
+        $Exception = [System.InvalidOperationException]::new($Message)
+        $ErrorRecord = [System.Management.Automation.ErrorRecord]::new(
+            $Exception, 
+            'ProcessAlreadyRunning', 
+            [System.Management.Automation.ErrorCategory]::InvalidOperation, 
+            $ProcessName
+        )
+        Write-Error $ErrorRecord
+        $null = Stop-Transcript
+        $PSCmdlet.ThrowTerminatingError($ErrorRecord)
+    }
+
+    $UninstallSoftwareSplat['UninstallProcessName'] = $ProcessName -replace '\.exe$'
 }
 
 [array]$InstalledSoftware = Get-InstalledSoftware -Architecture $Architecture -HivesToSearch $HivesToSearch | 
@@ -358,7 +415,7 @@ $UninstallSoftwareSplat = @{
     }
 
 if ($InstalledSoftware.count -eq 0) {
-    Write-Verbose ("Software '{0}' not installed" -f $DisplayName)
+    Write-Verbose ('Software "{0}" not installed' -f $DisplayName)
 }
 elseif ($InstalledSoftware.count -gt 1) {
     if ($UninstallAll.IsPresent) {
@@ -367,7 +424,7 @@ elseif ($InstalledSoftware.count -gt 1) {
        }
     }
     else {
-        Write-Verbose ("Found more than one instance of software '{0}', skipping because not sure which UninstallString to execute" -f $DisplayName)
+        Write-Verbose ('Found more than one instance of software "{0}", skipping because not sure which UninstallString to execute' -f $DisplayName)
     }
 }
 else {

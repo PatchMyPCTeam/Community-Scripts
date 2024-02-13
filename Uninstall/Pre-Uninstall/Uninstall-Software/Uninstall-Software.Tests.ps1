@@ -176,4 +176,21 @@ Describe 'Uninstall-Software.ps1' {
             $Result[1] | Should -Be $Expected[1]
         }
     }
+
+    it 'will throw if notepad.exe is already running and specified as -ProcessName' {
+        Mock Get-Process { 
+            [PSCustomObject]@{ Name = 'notepad' }
+        }
+
+        { .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -Architecture 'x64' -HivesToSearch 'HKLM' -ProcessName 'notepad' } | Should -Throw -ExceptionType ([System.InvalidOperationException]) -ExpectedMessage "Process 'notepad' is already running before the uninstallation has even started, quitting"
+    }
+
+    it 'should call Wait-Process' {
+        Mock Get-Process {}
+        Mock Wait-Process {} -Verifiable -ParameterFilter {
+            $Name -eq 'notepad'
+        }
+
+        .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -Architecture 'x64' -HivesToSearch 'HKLM' -WindowsInstaller 0 -ProcessName 'notepad' | Should -Invoke -CommandName 'Wait-Process' -Times 1
+    }
 }
