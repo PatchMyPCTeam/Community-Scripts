@@ -190,22 +190,6 @@ function Split-UninstallString {
         [String]$UninstallString
     )
 
-    # Example UninstallStrings:
-    # "C:\Program Files\7-Zip\Uninstall.exe" /S /abc /whatever
-    # C:\Program Files\7-Zip\Uninstall.exe /S
-    # C:\Program Files\7-Zip.exe.exe\Uninstall.exe /S /abc /whatever
-    # "C:\Program Files\7-Zip.exe.exe\Uninstall.exe" /S /abc /whatever
-    # C:\Program Files\7-Zip.exe\Uninstall.exe.exe /S /abc /whatever
-    # "C:\Program Files\7-Zip.exe\Uninstall.exe.exe" /S /abc /whatever
-    # C:\Program Files\7-Zip\Uninstall.exe.exe /S /abc /whatever
-    # "C:\Program Files\7-Zip\Uninstall.exe.exe" /S /abc /whatever
-    # C:\Program Files\7-Zip\Uninstall.exe
-    # "C:\Program Files\7-Zip\Uninstall.exe"
-    # C:\Program Files\7-Zip\Uninstall.exe.exe
-    # "C:\Program Files\7-Zip\Uninstall.exe.exe"
-    # C:\Program Files\7-Zip.exe\Uninstall.exe
-    # "C:\Program Files\7-Zip.exe\Uninstall.exe"
-
     if ($UninstallString.StartsWith('"')) {
         [Int]$EndOfFilePath = [String]::Join('', $UninstallString[1..$UninstallString.Length]).IndexOf('"')
         [String]$FilePath   = [String]::Join('', $UninstallString[0..$EndOfFilePath]).Trim(' ','"')
@@ -263,7 +247,7 @@ function Uninstall-Software {
 
             $StartProcessSplat = @{
                 FilePath     = 'msiexec.exe'
-                ArgumentList = '/x', $ProductCode, '/qn', 'REBOOT=ReallySuppress', '/l*v {0}' -f $MsiLog
+                ArgumentList = '/x', $ProductCode, '/qn', 'REBOOT=ReallySuppress', ('/l*v {0}' -f $MsiLog)
                 Wait         = $true
                 PassThru     = $true
                 ErrorAction  = $ErrorActionPreference

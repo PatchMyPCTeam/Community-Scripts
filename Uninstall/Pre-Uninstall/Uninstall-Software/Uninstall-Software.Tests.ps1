@@ -60,6 +60,12 @@ BeforeAll {
 }
 
 Describe 'Uninstall-Software.ps1' {
+    BeforeAll {
+        # Use Import-Module on a .ps1 as a bit of 'tricky' to avoid the mandatory paramter but still load the internal functions
+        # The script will still run but find / do nothing
+        Import-Module '.\Uninstall-Software.ps1' -Force
+    }
+
     it 'will call msiexec.exe for an MSI product' {
         Mock Start-Process {} -Verifiable -ParameterFilter { 
             $FilePath -eq 'msiexec.exe' -and 
@@ -142,5 +148,32 @@ Describe 'Uninstall-Software.ps1' {
 
     it 'will verify parameter set validation for -AdditionalArguments, -AdditionalEXEArguments, and -AdditionalMSIArguments' {
         { .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -Architecture 'x64' -HivesToSearch 'HKLM' -AdditionalArguments '/FakeParameter' -AdditionalEXEArguments '/FakeParameter' -AdditionalMSIArguments 'MSIRMSHUTDOWN=0' } | Should -Throw -ExceptionType ([System.Management.Automation.ParameterBindingException])
+    }
+
+    it 'will validate Split-UninstallString correctly parses the UninstallString' -TestCases @(
+        @{ UninstallString = '"C:\Program Files\7-Zip\Uninstall.exe" /S /abc /whatever';         Expected = @('C:\Program Files\7-Zip\Uninstall.exe', '/S /abc /whatever') },
+        @{ UninstallString = 'C:\Program Files\7-Zip\Uninstall.exe /S';                          Expected = @('C:\Program Files\7-Zip\Uninstall.exe', '/S') },
+        @{ UninstallString = 'C:\Program Files\7-Zip.exe.exe\Uninstall.exe /S /abc /whatever';   Expected = @('C:\Program Files\7-Zip.exe.exe\Uninstall.exe', '/S /abc /whatever') },
+        @{ UninstallString = '"C:\Program Files\7-Zip.exe.exe\Uninstall.exe" /S /abc /whatever'; Expected = @('C:\Program Files\7-Zip.exe.exe\Uninstall.exe', '/S /abc /whatever') },
+        @{ UninstallString = 'C:\Program Files\7-Zip.exe\Uninstall.exe.exe /S /abc /whatever';   Expected = @('C:\Program Files\7-Zip.exe\Uninstall.exe.exe', '/S /abc /whatever') },
+        @{ UninstallString = '"C:\Program Files\7-Zip.exe\Uninstall.exe.exe" /S /abc /whatever'; Expected = @('C:\Program Files\7-Zip.exe\Uninstall.exe.exe', '/S /abc /whatever') },
+        @{ UninstallString = 'C:\Program Files\7-Zip\Uninstall.exe.exe /S /abc /whatever';       Expected = @('C:\Program Files\7-Zip\Uninstall.exe.exe', '/S /abc /whatever') },
+        @{ UninstallString = '"C:\Program Files\7-Zip\Uninstall.exe.exe" /S /abc /whatever';     Expected = @('C:\Program Files\7-Zip\Uninstall.exe.exe', '/S /abc /whatever') },
+        @{ UninstallString = 'C:\Program Files\7-Zip\Uninstall.exe';                             Expected = @('C:\Program Files\7-Zip\Uninstall.exe') },
+        @{ UninstallString = '"C:\Program Files\7-Zip\Uninstall.exe"';                           Expected = @('C:\Program Files\7-Zip\Uninstall.exe') },
+        @{ UninstallString = 'C:\Program Files\7-Zip\Uninstall.exe.exe';                         Expected = @('C:\Program Files\7-Zip\Uninstall.exe.exe') },
+        @{ UninstallString = '"C:\Program Files\7-Zip\Uninstall.exe.exe"';                       Expected = @('C:\Program Files\7-Zip\Uninstall.exe.exe') },
+        @{ UninstallString = 'C:\Program Files\7-Zip.exe\Uninstall.exe';                         Expected = @('C:\Program Files\7-Zip.exe\Uninstall.exe') },
+        @{ UninstallString = '"C:\Program Files\7-Zip.exe\Uninstall.exe"';                       Expected = @('C:\Program Files\7-Zip.exe\Uninstall.exe') }
+    ) {
+        $Result = Split-UninstallString -UninstallString $UninstallString
+        $Result[0] | Should -Be $Expected[0]
+
+        if ([String]::IsNullOrWhitespace($Expected[1])) { 
+            $Result[1] | Should -BeNullOrEmpty
+        }
+        else {
+            $Result[1] | Should -Be $Expected[1]
+        }
     }
 }
