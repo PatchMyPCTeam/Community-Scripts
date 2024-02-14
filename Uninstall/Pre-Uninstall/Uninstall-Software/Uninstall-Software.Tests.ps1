@@ -47,12 +47,12 @@ BeforeAll {
     )
 
     Mock Start-Process {}
-    Mock Invoke-Expression {}
 
     function Get-InstalledSoftware {
         # Function defined / used within the script
         # Need to define it before we can mock it with Pester
     }
+
     Mock Get-InstalledSoftware {
         param($Architecture, $HivesToSearch)
         $64HKLMMockedARPData
@@ -62,11 +62,11 @@ BeforeAll {
 Describe 'Uninstall-Software.ps1' {
     BeforeAll {
         # Use Import-Module on a .ps1 as a bit of 'tricky' to avoid the mandatory paramter but still load the internal functions
-        # The script will still run but find / do nothing
+        # The script still run but find / do nothing
         Import-Module '.\Uninstall-Software.ps1' -Force
     }
 
-    it 'will call msiexec.exe for an MSI product' {
+    it 'call msiexec.exe for an MSI product' {
         Mock Start-Process {} -Verifiable -ParameterFilter { 
             $FilePath -eq 'msiexec.exe' -and 
             $ProductCode -eq '{23170F69-40C1-2702-2201-000001000000}' 
@@ -75,7 +75,7 @@ Describe 'Uninstall-Software.ps1' {
         .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -Architecture 'x64' -HivesToSearch 'HKLM' -WindowsInstaller 1 -SystemComponent 0 | Should -InvokeVerifiable
     }
 
-    it 'will call QuietUninstallString for an EXE product' {
+    it 'call QuietUninstallString for an EXE product' {
         Mock Start-Process {} -Verifiable -ParameterFilter { 
             $FilePath -eq 'C:\Program Files\7-Zip\Uninstall.exe' -and 
             $ArgumentList -eq '/S' 
@@ -84,19 +84,19 @@ Describe 'Uninstall-Software.ps1' {
         .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -Architecture 'x64' -HivesToSearch 'HKLM' -WindowsInstaller 0 -SystemComponent 0 | Should -InvokeVerifiable
     }
 
-    it 'will not uninstall any software because it could not find any' {
+    it 'not uninstall any software because it could not find any' {
         .\Uninstall-Software.ps1 -DisplayName 'idonotexist' -Architecture 'x64' -HivesToSearch 'HKLM' -WindowsInstaller 1 -SystemComponent 1 | Should -Invoke -CommandName 'Start-Process' -Times 0
     }
 
-    it 'will not uninstall any software because multiple are found and -UninstallAll is not used' {
+    it 'not uninstall any software because multiple are found and -UninstallAll is not used' {
         .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -Architecture 'x64' -HivesToSearch 'HKLM' | Should -Invoke -CommandName 'Start-Process' -Times 0
     }
 
-    it 'will uninstall both MSI and EXE 7-Zip because the -UninstallAll is used' {
+    it 'uninstall both MSI and EXE 7-Zip because the -UninstallAll is used' {
         .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -Architecture 'x64' -HivesToSearch 'HKLM' -UninstallAll | Should -Invoke -CommandName 'Start-Process' -Times 2
     }
 
-    it 'will only uninstall the non-visible component in ARP' {
+    it 'only uninstall the non-visible component in ARP' {
         Mock Start-Process {} -Verifiable -ParameterFilter { 
             $FilePath -eq 'msiexec.exe' -and 
             $ProductCode -eq '{FF4D5F84-0CFF-4865-8395-51445340F429}' 
@@ -104,7 +104,7 @@ Describe 'Uninstall-Software.ps1' {
         .\Uninstall-Software.ps1 -DisplayName 'Zscaler' -Architecture 'x64' -HivesToSearch 'HKLM' -WindowsInstaller 1 -SystemComponent 1 | Should -InvokeVerifiable
     }
 
-    it 'will only uninstall the visible component in ARP' {
+    it 'only uninstall the visible component in ARP' {
         Mock Start-Process {} -Verifiable -ParameterFilter { 
             $FilePath -eq 'C:\Program Files\Zscaler\ZSAInstaller\uninstall.exe' -and 
             $ArgumentList -eq '/S' 
@@ -112,7 +112,7 @@ Describe 'Uninstall-Software.ps1' {
         .\Uninstall-Software.ps1 -DisplayName 'Zscaler' -Architecture 'x64' -HivesToSearch 'HKLM' -WindowsInstaller 0 -SystemComponent 0 -AdditionalArguments '/S' | Should -InvokeVerifiable
     }
 
-    it 'will uninstall both MSI and EXE 7-Zip because the -UninstallAll with -AdditionalArguments is used' {
+    it 'uninstall both MSI and EXE 7-Zip because the -UninstallAll with -AdditionalArguments is used' {
         Mock Start-Process {} -Verifiable -ParameterFilter { 
             $FilePath -eq 'msiexec.exe' -and 
             $ProductCode -eq '{23170F69-40C1-2702-2201-000001000000}' -and 
@@ -129,7 +129,7 @@ Describe 'Uninstall-Software.ps1' {
         .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -Architecture 'x64' -HivesToSearch 'HKLM' -UninstallAll -AdditionalArguments '/FakeParameter' | Should -InvokeVerifiable
     }
 
-    it 'will uninstall both MSI and EXE 7-Zip because the -UninstallAll with -AdditionalMSIArguments and -AdditionalEXEArguments is used' {
+    it 'uninstall both MSI and EXE 7-Zip because the -UninstallAll with -AdditionalMSIArguments and -AdditionalEXEArguments is used' {
         Mock Start-Process {} -Verifiable -ParameterFilter { 
             $FilePath -eq 'msiexec.exe' -and 
             $ProductCode -eq '{23170F69-40C1-2702-2201-000001000000}' -and 
@@ -146,11 +146,11 @@ Describe 'Uninstall-Software.ps1' {
         .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -Architecture 'x64' -HivesToSearch 'HKLM' -UninstallAll -AdditionalEXEArguments '/FakeParameter' -AdditionalMSIArguments 'MSIRMSHUTDOWN=0' | Should -InvokeVerifiable
     }
 
-    it 'will verify parameter set validation for -AdditionalArguments, -AdditionalEXEArguments, and -AdditionalMSIArguments' {
+    it 'verify parameter set validation for -AdditionalArguments, -AdditionalEXEArguments, and -AdditionalMSIArguments' {
         { .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -Architecture 'x64' -HivesToSearch 'HKLM' -AdditionalArguments '/FakeParameter' -AdditionalEXEArguments '/FakeParameter' -AdditionalMSIArguments 'MSIRMSHUTDOWN=0' } | Should -Throw -ExceptionType ([System.Management.Automation.ParameterBindingException])
     }
 
-    it 'will validate Split-UninstallString correctly parses the UninstallString' -TestCases @(
+    it 'validate Split-UninstallString correctly parses UninstallString: <UninstallString>' -TestCases @(
         @{ UninstallString = '"C:\Program Files\7-Zip\Uninstall.exe" /S /abc /whatever';         Expected = @('C:\Program Files\7-Zip\Uninstall.exe', '/S /abc /whatever') },
         @{ UninstallString = 'C:\Program Files\7-Zip\Uninstall.exe /S';                          Expected = @('C:\Program Files\7-Zip\Uninstall.exe', '/S') },
         @{ UninstallString = 'C:\Program Files\7-Zip.exe.exe\Uninstall.exe /S /abc /whatever';   Expected = @('C:\Program Files\7-Zip.exe.exe\Uninstall.exe', '/S /abc /whatever') },
@@ -177,7 +177,7 @@ Describe 'Uninstall-Software.ps1' {
         }
     }
 
-    it 'will throw if notepad.exe is already running and specified as -ProcessName' {
+    it 'throw if notepad.exe is already running and specified as -ProcessName' {
         Mock Get-Process { 
             [PSCustomObject]@{ Name = 'notepad' }
         }
@@ -185,12 +185,54 @@ Describe 'Uninstall-Software.ps1' {
         { .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -Architecture 'x64' -HivesToSearch 'HKLM' -ProcessName 'notepad' } | Should -Throw -ExceptionType ([System.InvalidOperationException]) -ExpectedMessage "Process 'notepad' is already running before the uninstallation has even started, quitting"
     }
 
-    it 'should call Wait-Process' {
+    it 'should call Wait-Process if notepad.exe is running and specified as -ProcessName' {
         Mock Get-Process {}
         Mock Wait-Process {} -Verifiable -ParameterFilter {
             $Name -eq 'notepad'
         }
 
         .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -Architecture 'x64' -HivesToSearch 'HKLM' -WindowsInstaller 0 -ProcessName 'notepad' | Should -Invoke -CommandName 'Wait-Process' -Times 1
+    }
+
+    it '<Action> software because it is <Operator> than <Version>' -TestCases @(
+        @{ Action = 'not uninstall'; Operator = 'greater than'; Version = '22.01' },
+        @{ Action = 'not uninstall'; Operator = 'less than';    Version = '21.01' },
+        @{ Action = 'not uninstall'; Operator = 'equal to';     Version = '1.0'   },
+        @{ Action = 'uninstall';     Operator = 'greater than'; Version = '20.01' },
+        @{ Action = 'uninstall';     Operator = 'less than';    Version = '22.01' },
+        @{ Action = 'uninstall';     Operator = 'equal to';     Version = '21.01' }
+    ) {
+        $Splat = @{
+            DisplayName      = '7-Zip*'
+            Architecture     = 'x64'
+            HivesToSearch    = 'HKLM'
+            WindowsInstaller = 0
+        }
+
+        switch ($Operator) {
+            'greater than' { $Splat['VersionGreaterThan'] = $Version }
+            'less than'    { $Splat['VersionLessThan']    = $Version }
+            'equal to'     { $Splat['VersionEqualTo']     = $Version }
+        }
+
+        $Times = if ($Action -eq 'uninstall') { 1 } else { 0 }
+
+        .\Uninstall-Software.ps1 @Splat | Should -Invoke -CommandName 'Start-Process' -Times $Times
+    }
+
+    it 'not uninstall any software because it is not greater than 22.01 and less than 20.01' {
+        .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -Architecture 'x64' -HivesToSearch 'HKLM' -VersionGreaterThan '22.01' -VersionLessThan '20.01' | Should -Invoke -CommandName 'Start-Process' -Times 0
+    }
+
+    it 'not uninstall any software because it is not greater than 22.01 and less than 21.01 and equal to 21.0' {
+        .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -Architecture 'x64' -HivesToSearch 'HKLM' -VersionGreaterThan '22.01' -VersionLessThan '21.01' -VersionEqualTo '21.0' | Should -Invoke -CommandName 'Start-Process' -Times 0
+    }
+
+    it 'uninstall software because it is greater than 20.00 and less than 22.00' {
+        .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -Architecture 'x64' -HivesToSearch 'HKLM' -WindowsInstaller 0 -VersionGreaterThan '20.0' -VersionLessThan '22.0' | Should -Invoke -CommandName 'Start-Process' -Times 1
+    }
+
+    it 'uninstall software because it is greater than 20.00 and less than 22.00 and equal to 21.01' {
+        .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -Architecture 'x64' -HivesToSearch 'HKLM' -WindowsInstaller 0 -VersionGreaterThan '20.0' -VersionLessThan '22.0' -VersionEqualTo '21.01' | Should -Invoke -CommandName 'Start-Process' -Times 1
     }
 }

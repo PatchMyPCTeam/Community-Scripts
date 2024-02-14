@@ -5,10 +5,20 @@ Uninstall software based on the DisplayName of said software in the registry
 
 ## SYNTAX
 
+### AdditionalArguments (Default)
 ```
-Uninstall-Software [-DisplayName] <String> [[-Architecture] <String>] [[-HivesToSearch] <String[]>]
- [[-WindowsInstaller] <Int32>] [[-SystemComponent] <Int32>] [[-AdditionalArguments] <String>] [-UninstallAll]
- [<CommonParameters>]
+Uninstall-Software.ps1 -DisplayName <String> [-Architecture <String>] [-HivesToSearch <String[]>] [-WindowsInstaller <Int32>]
+ [-SystemComponent <Int32>] [-VersionLessThan <Version>] [-VersionEqualTo <Version>]
+ [-VersionGreaterThan <Version>] [-AdditionalArguments <String>] [-UninstallAll] [-ProcessName <String>]
+ [-ProgressAction <ActionPreference>] [<CommonParameters>]
+```
+
+### AdditionalEXEorMSIArguments
+```
+Uninstall-Software.ps1 -DisplayName <String> [-Architecture <String>] [-HivesToSearch <String[]>] [-WindowsInstaller <Int32>]
+ [-SystemComponent <Int32>] [-VersionLessThan <Version>] [-VersionEqualTo <Version>]
+ [-VersionGreaterThan <Version>] [-AdditionalMSIArguments <String>] [-AdditionalEXEArguments <String>]
+ [-UninstallAll] [-ProcessName <String>] [-ProgressAction <ActionPreference>] [<CommonParameters>]
 ```
 
 ## DESCRIPTION
@@ -22,13 +32,22 @@ on your devices and you need to uninstall the repackaged software, and install u
 
 The script searches the registry for installed software, matching the supplied DisplayName value in the -DisplayName parameter
 with that of the DisplayName in the registry.
-If one match is found, it uninstalls the software using the UninstallString. 
+If one match is found, it uninstalls the software using the QuietUninstallString or UninstallString.
 
-If a product code is not in the UninstallString, the whole value in QuietUninstallString is used, or just UninstallString if QuietUninstallString doesn't exist.
+You can supply additional arguments to the uninstaller using the -AdditionalArguments, -AdditionalMSIArguments, or -AdditionalEXEArguments parameters.
 
-If more than one matches of the DisplayName occurs, uninstall is not possible.
+You cannot use -AdditionalArguments with -AdditionalMSIArguments or -AdditionalEXEArguments.
+
+If a product code is not in the UninstallString, QuietUninstallString or UninstallString are used.
+QuietUninstallString is preferred if it exists.
+
+If more than one matches of the DisplayName occurs, uninstall is not possible unless you use the -UninstallAll switch.
 
 If QuietUninstallString and UninstallString is not present or null, uninstall is not possible.
+
+A log file is created in the temp directory with the name "Uninstall-Software-\<DisplayName\>.log" which contains the verbose output of the script.
+
+An .msi log file is created in the temp directory with the name "\<DisplayName\>_\<DisplayVersion\>.msi.log" which contains the verbose output of the msiexec.exe process.
 
 ## EXAMPLES
 
@@ -48,6 +67,31 @@ Uninstall-Software.ps1 -DisplayName "Mozilla*"
 
 Uninstalls any products where DisplayName starts with "Mozilla"
 
+### EXAMPLE 3
+```
+Uninstall-Software.ps1 -DisplayName "*SomeSoftware*" -AdditionalMSIArguments "/quiet /norestart" -AdditionalEXEArguments "/S" -UninstallAll
+```
+
+Uninstalls all software where DisplayName contains "SomeSoftware". 
+
+For any software found in the registry matching the search criteria and are MSI-based (WindowsInstaller = 1), "/quiet /norestart" will be supplied to the uninstaller.
+
+For any software found in the registry matching the search criteria and  are EXE-based (WindowsInstaller = 0 or non-existent), "/S" will be supplied to the uninstaller.
+
+### EXAMPLE 4
+```
+Uninstall-Software.ps1 -DisplayName "KiCad*" -ProcessName "Un_A"
+```
+
+Uninstalls KiCad and waits for the process "Un_A" to finish after the uninstallation has started.
+
+### EXAMPLE 5
+```
+Uninstall-Software.ps1 -DisplayName "SomeSoftware" -VersionGreaterThan 1.0.0
+```
+
+Uninstalls SomeSoftware if the version is greater than 1.0.0
+
 ## PARAMETERS
 
 ### -DisplayName
@@ -60,7 +104,7 @@ Parameter Sets: (All)
 Aliases:
 
 Required: True
-Position: 1
+Position: Named
 Default value: None
 Accept pipeline input: False
 Accept wildcard characters: False
@@ -79,7 +123,7 @@ Parameter Sets: (All)
 Aliases:
 
 Required: False
-Position: 2
+Position: Named
 Default value: Both
 Accept pipeline input: False
 Accept wildcard characters: False
@@ -97,7 +141,7 @@ Parameter Sets: (All)
 Aliases:
 
 Required: False
-Position: 3
+Position: Named
 Default value: HKLM
 Accept pipeline input: False
 Accept wildcard characters: False
@@ -120,7 +164,7 @@ Parameter Sets: (All)
 Aliases:
 
 Required: False
-Position: 4
+Position: Named
 Default value: 0
 Accept pipeline input: False
 Accept wildcard characters: False
@@ -137,8 +181,59 @@ Parameter Sets: (All)
 Aliases:
 
 Required: False
-Position: 5
+Position: Named
 Default value: 0
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -VersionLessThan
+Specify a version number to use as an additional criteria when trying to find installed software.
+
+This parameter can be used in conjuction with -VersionEqualTo and -VersionGreaterThan.
+
+```yaml
+Type: Version
+Parameter Sets: (All)
+Aliases:
+
+Required: False
+Position: Named
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -VersionEqualTo
+Specify a version number to use as an additional criteria when trying to find installed software.
+
+This parameter can be used in conjuction with -VersionLessThan and -VersionGreaterThan.
+
+```yaml
+Type: Version
+Parameter Sets: (All)
+Aliases:
+
+Required: False
+Position: Named
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -VersionGreaterThan
+Specify a version number to use as an additional criteria when trying to find installed software.
+
+This parameter can be used in conjuction with -VersionLessThan and -VersionEqualTo.
+
+```yaml
+Type: Version
+Parameter Sets: (All)
+Aliases:
+
+Required: False
+Position: Named
+Default value: None
 Accept pipeline input: False
 Accept wildcard characters: False
 ```
@@ -150,11 +245,11 @@ Cannot be used with -AdditionalMSIArguments or -AdditionalEXEArguments.
 
 ```yaml
 Type: String
-Parameter Sets: (All)
+Parameter Sets: AdditionalArguments
 Aliases:
 
 Required: False
-Position: 6
+Position: Named
 Default value: None
 Accept pipeline input: False
 Accept wildcard characters: False
@@ -162,18 +257,18 @@ Accept wildcard characters: False
 
 ### -AdditionalMSIArguments
 A string which includes the additional parameters you would like passed to the MSI uninstaller. 
-    
+
 This is useful if you use this, and (or not at all) -AdditionalEXEArguments, in conjuction with -UninstallAll to apply different parameters for MSI based uninstalls.
 
 Cannot be used with -AdditionalArguments.
 
 ```yaml
 Type: String
-Parameter Sets: (All)
+Parameter Sets: AdditionalEXEorMSIArguments
 Aliases:
 
 Required: False
-Position: 7
+Position: Named
 Default value: None
 Accept pipeline input: False
 Accept wildcard characters: False
@@ -181,18 +276,18 @@ Accept wildcard characters: False
 
 ### -AdditionalEXEArguments
 A string which includes the additional parameters you would like passed to the EXE uninstaller.
-    
+
 This is useful if you use this, and (or not at all) -AdditionalMSIArguments, in conjuction with -UninstallAll to apply different parameters for EXE based uninstalls.
 
 Cannot be used with -AdditionalArguments.
 
 ```yaml
 Type: String
-Parameter Sets: (All)
+Parameter Sets: AdditionalEXEorMSIArguments
 Aliases:
 
 Required: False
-Position: 8
+Position: Named
 Default value: None
 Accept pipeline input: False
 Accept wildcard characters: False
@@ -213,6 +308,42 @@ Aliases:
 Required: False
 Position: Named
 Default value: False
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -ProcessName
+Wait for this process to finish after the uninstallation has started.
+
+If the process is already running before the uninstallation has even started, the script will quit with an error.
+
+This is useful for some software which spawn a seperate process to do the uninstallation, and the main process exits before the uninstallation is finished.
+
+The .exe extension is not required, and the process name is case-insensitive.
+
+```yaml
+Type: String
+Parameter Sets: (All)
+Aliases:
+
+Required: False
+Position: Named
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -ProgressAction
+{{ Fill ProgressAction Description }}
+
+```yaml
+Type: ActionPreference
+Parameter Sets: (All)
+Aliases: proga
+
+Required: False
+Position: Named
+Default value: None
 Accept pipeline input: False
 Accept wildcard characters: False
 ```
