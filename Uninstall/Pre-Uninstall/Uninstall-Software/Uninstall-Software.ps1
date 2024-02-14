@@ -31,13 +31,15 @@ function abc123 {
     The name of the software you wish to uninstall as it appears in the registry as its DisplayName value. * wildcard supported.
 .PARAMETER Architecture
     Choose which registry key path to search in while looking for installed software. Acceptable values are:
-        - "x86" will search in SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall on a 64-bit system.
-        - "x64" will search in SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall.
-        - "Both" will search in both key paths.
+
+    - "x86" will search in SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall on a 64-bit system.
+    - "x64" will search in SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall.
+    - "Both" will search in both key paths.
 .PARAMETER HivesToSearch
-    Choose which registry hive to search in while looking for installed software. Acceptabel values aref;
-        - "HKLM" will search in hive HKEY_LOCAL_MACHINE which is typically where system-wide installed software is registered.
-        - "HKCU" will search in hive HKEY_CURRENT_USER which is typically where user-based installed software is registered.
+    Choose which registry hive to search in while looking for installed software. Acceptable values are:
+
+    - "HKLM" will search in hive HKEY_LOCAL_MACHINE which is typically where system-wide installed software is registered.
+    - "HKCU" will search in hive HKEY_CURRENT_USER which is typically where user-based installed software is registered.
 .PARAMETER WindowsInstaller
     Specify a value between 1 and 0 to use as an additional criteria when trying to find installed software.
 
@@ -98,8 +100,9 @@ function abc123 {
     PS C:\> Uninstall-Software.ps1 -DisplayName "Greenshot"
     
     Uninstalls Greenshot if "Greenshot" is detected as the DisplayName in a key under either of the registry key paths:
-        - SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall
-        - SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall 
+
+    - SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall
+    - SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall 
 .EXAMPLE
     PS C:\> Uninstall-Software.ps1 -DisplayName "Mozilla*"
 

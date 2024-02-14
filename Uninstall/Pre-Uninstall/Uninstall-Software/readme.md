@@ -10,7 +10,7 @@ Uninstall software based on the DisplayName of said software in the registry
 Uninstall-Software.ps1 -DisplayName <String> [-Architecture <String>] [-HivesToSearch <String[]>] [-WindowsInstaller <Int32>]
  [-SystemComponent <Int32>] [-VersionLessThan <Version>] [-VersionEqualTo <Version>]
  [-VersionGreaterThan <Version>] [-AdditionalArguments <String>] [-UninstallAll] [-ProcessName <String>]
- [-ProgressAction <ActionPreference>] [<CommonParameters>]
+ [<CommonParameters>]
 ```
 
 ### AdditionalEXEorMSIArguments
@@ -18,7 +18,7 @@ Uninstall-Software.ps1 -DisplayName <String> [-Architecture <String>] [-HivesToS
 Uninstall-Software.ps1 -DisplayName <String> [-Architecture <String>] [-HivesToSearch <String[]>] [-WindowsInstaller <Int32>]
  [-SystemComponent <Int32>] [-VersionLessThan <Version>] [-VersionEqualTo <Version>]
  [-VersionGreaterThan <Version>] [-AdditionalMSIArguments <String>] [-AdditionalEXEArguments <String>]
- [-UninstallAll] [-ProcessName <String>] [-ProgressAction <ActionPreference>] [<CommonParameters>]
+ [-UninstallAll] [-ProcessName <String>] [<CommonParameters>]
 ```
 
 ## DESCRIPTION
@@ -57,8 +57,8 @@ Uninstall-Software.ps1 -DisplayName "Greenshot"
 ```
 
 Uninstalls Greenshot if "Greenshot" is detected as the DisplayName in a key under either of the registry key paths:
-    - SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall
-    - SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall
+- SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall
+- SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall
 
 ### EXAMPLE 2
 ```
@@ -113,9 +113,10 @@ Accept wildcard characters: False
 ### -Architecture
 Choose which registry key path to search in while looking for installed software.
 Acceptable values are:
-    - "x86" will search in SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall on a 64-bit system.
-    - "x64" will search in SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall.
-    - "Both" will search in both key paths.
+
+- "x86" will search in SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall on a 64-bit system.
+- "x64" will search in SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall.
+- "Both" will search in both key paths.
 
 ```yaml
 Type: String
@@ -130,10 +131,10 @@ Accept wildcard characters: False
 ```
 
 ### -HivesToSearch
-Choose which registry hive to search in while looking for installed software.
-Acceptabel values aref;
-    - "HKLM" will search in hive HKEY_LOCAL_MACHINE which is typically where system-wide installed software is registered.
-    - "HKCU" will search in hive HKEY_CURRENT_USER which is typically where user-based installed software is registered.
+Choose which registry hive to search in while looking for installed software. Acceptable values are;
+
+- "HKLM" will search in hive HKEY_LOCAL_MACHINE which is typically where system-wide installed software is registered.
+- "HKCU" will search in hive HKEY_CURRENT_USER which is typically where user-based installed software is registered.
 
 ```yaml
 Type: String[]
@@ -325,21 +326,6 @@ The .exe extension is not required, and the process name is case-insensitive.
 Type: String
 Parameter Sets: (All)
 Aliases:
-
-Required: False
-Position: Named
-Default value: None
-Accept pipeline input: False
-Accept wildcard characters: False
-```
-
-### -ProgressAction
-{{ Fill ProgressAction Description }}
-
-```yaml
-Type: ActionPreference
-Parameter Sets: (All)
-Aliases: proga
 
 Required: False
 Position: Named
