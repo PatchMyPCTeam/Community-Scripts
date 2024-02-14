@@ -1,4 +1,3 @@
-function abc123 {
 <#
 .SYNOPSIS
     Uninstall software based on the DisplayName of said software in the registry
@@ -527,4 +526,3 @@ else {
 }
 
 $null = Stop-Transcript
-}
