@@ -289,7 +289,10 @@ function Uninstall-Software {
         if ($ProductCode) { 
             Write-Verbose ('Found product code, will uninstall using "{0}"' -f $ProductCode)
 
-            $MsiLog = '{0}\{1}_{2}.msi.log' -f $env:temp, $Software.DisplayName.Replace(' ','_'), $Software.DisplayVersion.Split([System.IO.Path]::GetInvalidFileNameChars()) -join ''
+            $MsiLog = '{0}\{1}_{2}.msi.log' -f 
+                $env:temp, 
+                [String]::Join('', $Software.DisplayName.Replace(' ','_').Split([System.IO.Path]::GetInvalidFileNameChars())), 
+                [String]::Join('', $Software.DisplayVersion.Split([System.IO.Path]::GetInvalidFileNameChars()))
 
             $StartProcessSplat = @{
                 FilePath     = 'msiexec.exe'
