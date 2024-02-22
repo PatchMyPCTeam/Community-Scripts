@@ -22,6 +22,6 @@ The script will output the following information (note that these are all best-g
     
     Displays a list of installed software and will provide relevant info for Patch My PC Custom Apps
 
-### VIDEO EXAMPLE 
-(no sound)
-https://github.com/PatchMyPCTeam/Community-Scripts/assets/3790176/2497b3fa-1990-45a9-a240-7f0b44a0124b
+### GIF EXAMPLE 
+![CustomAppsHelper](https://github.com/PatchMyPCTeam/Community-Scripts/assets/3790176/306f2485-4c20-4c1e-8260-98e26cb248e2)
+
