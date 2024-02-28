@@ -53,6 +53,7 @@ if ($SelectedApp) {
 
 	$DetectionInfo = [PSCustomObject]@{
 		AppName                       = $($DisplayNameNew.Replace('%', '').Replace('  ', ' ').trim())
+		Publisher                     = $SelectedApp.Publisher
 		Architecture                  = $Architecture
 		AppsAndFeaturesName           = $DisplayNameNew
 		Version                       = $SelectedApp.DisplayVersion
