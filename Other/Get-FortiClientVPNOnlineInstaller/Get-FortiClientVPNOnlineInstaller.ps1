@@ -6,7 +6,7 @@
     .PARAMETER LocalContentRepo
         Specify the path to your Patch My PC Local Content Repository
     .EXAMPLE
-        C:\PS>  Get-FortiClientVPNOnlineInstaller -LocalContentRepo "C:\LocalContentRepository" -DownloadDir "$HOME\Downloads\FortiClientVPNOnlineInstaller_7.0.exe"
+        C:\PS>  Get-FortiClientVPNOnlineInstaller -LocalContentRepo "C:\LocalContentRepository" -DownloadDir "$HOME\Downloads\FortiClientVPNOnlineInstaller.exe"
         Downloads the Online installer to your Downloads folder and exports the MSI to your Local Content Repo
     .NOTES
         ################# DISCLAIMER #################
@@ -20,9 +20,9 @@ param (
     [Parameter(Mandatory = $true, Position=0)]
     [IO.Fileinfo]$LocalContentRepo
 )
-$Source = "https://links.fortinet.com/forticlient/win/vpnagent"
-Invoke-RestMethod -Uri $Source -OutFile ".\FortiClientVPNOnlineInstaller_7.0.exe"
-Start-Process ".\FortiClientVPNOnlineInstaller_7.0.exe" -WindowStyle Minimized
+$Source = "https://filestore.fortinet.com/forticlient/FortiClientVPNOnlineInstaller.exe"
+Invoke-RestMethod -Uri $Source -OutFile ".\FortiClientVPNOnlineInstaller.exe"
+Start-Process ".\FortiClientVPNOnlineInstaller.exe" -WindowStyle Minimized
 
 $started = $false
 $exists = $false
@@ -48,4 +48,4 @@ Do {
 } Until ($exists)
 Copy-Item $FortiClientVPNMSI.FullName -Destination "$LocalContentRepo"
 Stop-Process -Name $status.ProcessName -Force
-Remove-Item -Path ".\FortiClientVPNOnlineInstaller_7.0.exe" -Force
+Remove-Item -Path ".\FortiClientVPNOnlineInstaller.exe" -Force
