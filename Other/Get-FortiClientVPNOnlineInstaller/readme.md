@@ -16,7 +16,7 @@ This function is used to download the FortiClientVPN Online Installer, Run it an
 
 ### EXAMPLE 1
 ```
-Get-FortiClientVPNOnlineInstaller -LocalContentRepo "C:\LocalContentRepository" -DownloadDir "$HOME\Downloads\FortiClientVPNOnlineInstaller_7.0.exe"
+Get-FortiClientVPNOnlineInstaller -LocalContentRepo "C:\LocalContentRepository" -DownloadDir "$HOME\Downloads\FortiClientVPNOnlineInstaller"
 ```
 Downloads the Online installer to your Downloads folder and exports the MSI to your Local Content Repo
 
