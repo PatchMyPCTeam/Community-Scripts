@@ -365,8 +365,8 @@ function Uninstall-Software {
                 Wait-Process -Name $UninstallProcessName -Timeout 1800 -ErrorAction 'Stop'
             }
             catch {
-                if ($_.Exception.Message -match 'Cannot find a process with the name') {
-                    Write-Verbose $_.Exception.Message.Replace('Verify the process name and call the cmdlet again.')
+                if ($_.FullyQualifiedErrorId -match 'NoProcessFoundForGivenName') {
+                    Write-Verbose 'Process not found, continuing'
                 }
                 else {
                     throw
