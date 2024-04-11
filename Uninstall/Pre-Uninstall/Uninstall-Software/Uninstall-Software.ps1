@@ -137,21 +137,19 @@ param (
     [String[]]$HivesToSearch = 'HKLM',
 
     [Parameter()]
-    [ValidateSet(1, 0)]
-    [Int]$WindowsInstaller,
+    [Boolean]$WindowsInstaller,
 
     [Parameter()]
-    [ValidateSet(1, 0)]
-    [Int]$SystemComponent,
+    [Boolean]$SystemComponent,
 
     [Parameter()]
-    [Version]$VersionLessThan,
+    [String]$VersionLessThan,
 
     [Parameter()]
-    [Version]$VersionEqualTo,
+    [String]$VersionEqualTo,
 
     [Parameter()]
-    [Version]$VersionGreaterThan,
+    [String]$VersionGreaterThan,
 
     [Parameter(ParameterSetName = 'AdditionalArguments')]
     [String]$AdditionalArguments,
@@ -172,32 +170,48 @@ param (
 function Get-InstalledSoftware {
     param(
         [Parameter(Mandatory)]
-        [ValidateSet('Both', 'x86', 'x64')]
-        [String]$Architecture,
+        [String]$DisplayName,
 
-        [Parameter(Mandatory)]
+        [Parameter()]
+        [ValidateSet('Both', 'x86', 'x64')]
+        [String]$Architecture = 'Both',
+
+        [Parameter()]
         [ValidateSet('HKLM', 'HKCU')]
-        [String[]]$HivesToSearch
+        [String[]]$HivesToSearch = 'HKLM',
+
+        [Parameter()]
+        [Boolean]$WindowsInstaller,
+    
+        [Parameter()]
+        [Boolean]$SystemComponent,
+    
+        [Parameter()]
+        [String]$VersionLessThan,
+    
+        [Parameter()]
+        [String]$VersionEqualTo,
+    
+        [Parameter()]
+        [String]$VersionGreaterThan
     )
-    $PathsToSearch = switch -regex ($Architecture) {
-        'Both|x86' {
-            # IntPtr will be 4 on a 32 bit system, so this add Wow6432Node if script running on 64 bit system
-            if (-not ([IntPtr]::Size -eq 4)) {
+
+    $PathsToSearch = if ([IntPtr]::Size -eq 4) {
+        # IntPtr will be 4 on a 32 bit system, where there is only one place to look
+        'Software\Microsoft\Windows\CurrentVersion\Uninstall\*'
+    }
+    else {
+        switch -regex ($Architecture) {
+            'Both|x86' {
+                # If we are searching for a 32 bit application then we will only search under Wow6432Node
                 'Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
             }
-            # If not running on a 64 bit system then we will search for 32 bit apps in the normal software node, non-Wow6432
-            else {
-                'Software\Microsoft\Windows\CurrentVersion\Uninstall\*'
-            }
-        }
-        'Both|x64' {
-            # If we are searching for a 64 bit application then we will only search the normal software node, non-Wow6432
-            if (-not ([IntPtr]::Size -eq 4)) {
+            'Both|x64' {
+                # If we are searching for a 64 bit application then we will only search the 64-bit registry
                 'Software\Microsoft\Windows\CurrentVersion\Uninstall\*'
             }
         }
     }
-
 
     $FullPaths = foreach ($PathFragment in $PathsToSearch) {
         switch ($HivesToSearch) {
@@ -216,15 +230,96 @@ function Get-InstalledSoftware {
         Write-Verbose $RegPath
     }
 
-    $propertyNames = 'DisplayName', 'DisplayVersion', 'PSChildName', 'Publisher', 'InstallDate', 'QuietUninstallString', 'UninstallString', 'WindowsInstaller', 'SystemComponent'
+    $PropertyNames = 'DisplayName', 'DisplayVersion', 'PSChildName', 'Publisher', 'InstallDate', 'QuietUninstallString', 'UninstallString', 'WindowsInstaller', 'SystemComponent'
 
     $AllFoundObjects = Get-ItemProperty -Path $FullPaths -Name $propertyNames -ErrorAction SilentlyContinue
 
     foreach ($Result in $AllFoundObjects) {
-        if (-not [string]::IsNullOrEmpty($Result.DisplayName)) {
-            $Result | Select-Object -Property $propertyNames
+        try {
+            if ($Result.DisplayName -notlike $DisplayName) {
+                Write-Verbose ('Skipping {0} as name does not match {1}' -f $Result.DisplayName, $DisplayName)
+                continue
+            }
+            # Casting to [bool] will return $false if the property is 0 or not present
+            if ($PSBoundParameters.ContainsKey('WindowsInstaller') -and [bool]$Result.WindowsInstaller -ne $WindowsInstaller) {
+                Write-Verbose ('Skipping {0} as WindowsInstaller value {1} does not match {2}' -f [bool]$Result.DisplayName, $Result.WindowsInstaller, $WindowsInstaller)
+                continue
+            }
+            if ($PSBoundParameters.ContainsKey('SystemComponent') -and [bool]$Result.SystemComponent -ne $SystemComponent) {
+                Write-Verbose ('Skipping {0} as SystemComponent value {1} does not match {2}' -f [bool]$Result.DisplayName, $Result.SystemComponent, $SystemComponent)
+                continue
+            }
+            if ($PSBoundParameters.ContainsKey('VersionEqualTo') -and (ConvertTo-Version $Result.DisplayVersion) -ne (ConvertTo-Version $VersionEqualTo)) {
+                Write-Verbose ('Skipping {0} as version {1} is not equal to {2}' -f $Result.DisplayName, $Result.DisplayVersion, $VersionEqualTo)
+                continue
+            }
+            if ($PSBoundParameters.ContainsKey('VersionLessThan') -and (ConvertTo-Version $Result.DisplayVersion) -ge (ConvertTo-Version $VersionLessThan)) {
+                Write-Verbose ('Skipping {0} as version {1} is not less than {2}' -f $Result.DisplayName, $Result.DisplayVersion, $VersionLessThan)
+                continue
+            }
+            if ($PSBoundParameters.ContainsKey('VersionGreaterThan') -and (ConvertTo-Version $Result.DisplayVersion) -le (ConvertTo-Version $VersionGreaterThan)) {
+                Write-Verbose ('Skipping {0} as version {1} is not greater than {2}' -f $Result.DisplayName, $Result.DisplayVersion, $VersionGreaterThan)
+                continue
+            }
+            # If we get here, then all criteria have been met
+            Write-Verbose ('Found matching application {0} {1}' -f $Result.DisplayName, $Result.DisplayVersion)
+            $Result | Select-Object -Property $PropertyNames
         }
+        catch {
+            # ConvertTo-Version will throw an error if it can't convert the version string to a [version] object
+            Write-Warning "Error processing $($Result.DisplayName): $_"
+            continue
+        }
+
     }
+}
+
+function ConvertTo-Version {
+    param (
+        [Parameter(ValueFromPipeline = $true, Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [String]$VersionString
+    )
+
+    #Delete any backslashes
+    $FormattedVersion = $VersionString.Replace('\','')
+
+    #Replace build or _build with a .
+    $FormattedVersion = $FormattedVersion -replace '(_|\s)build', '.'
+
+    #Replace any underscore, dash. plus, or open bracket surrounded by digits with a .
+    $FormattedVersion = $FormattedVersion -replace '(?<=\d)(_|-|\+|\()(?=\d)', '.'
+
+    # If Version ends in a trailing ., delete it
+    $FormattedVersion = $FormattedVersion -replace '\.$', ''
+
+    # Delete anything that isn't a decimal or a dot
+    $FormattedVersion = $FormattedVersion -replace '[^\d.]', ''
+
+    # Delete any random instances of a-z followed by digits, such as b1, ac3, beta5
+    $FormattedVersion = $FormattedVersion -replace '[a-z]+\d+', ''
+
+    # Trim any version numbers with 5 or more parts down to 4
+    $FormattedVersion = $FormattedVersion -replace '^((\d+\.){3}\d+).*', '$1'
+
+    # Add a .0 to any single integers
+    $FormattedVersion = $FormattedVersion -replace '^(\d+)$','$1.0'
+
+    # Pad the version number out to contain 4 parts before casting to [version]
+    $PeriodCount = $FormattedVersion.ToCharArray().Where{$_ -eq '.'}.Count
+    switch($PeriodCount) {
+        1 { $PaddedVersion = $FormattedVersion + '.0.0' }    # One period, so it's a two-part version number
+        2 { $PaddedVersion = $FormattedVersion + '.0' }      # Two periods, so it's a three-part version number
+        default { $PaddedVersion = $FormattedVersion }
+    }
+
+    try {
+        [System.Version]::Parse($PaddedVersion)
+    }
+    catch {
+        throw "'$VersionString' was formatted to '$FormattedVersion' which failed to be cast as [System.Version]: $_"
+    }
+
 }
 
 function Split-UninstallString {
@@ -411,108 +506,21 @@ if ($PSBoundParameters.ContainsKey('ProcessName')) {
     $UninstallSoftwareSplat['UninstallProcessName'] = $ProcessName -replace '\.exe$'
 }
 
-[array]$InstalledSoftware = Get-InstalledSoftware -Architecture $Architecture -HivesToSearch $HivesToSearch | Where-Object { 
-    $Software = $_
-
-    $_WindowsInstaller = if ($PSBoundParameters.ContainsKey('WindowsInstaller')) {
-        switch ($WindowsInstaller) {
-            1 {
-                [int]$WindowsInstaller -eq [int]$Software.WindowsInstaller
-            }
-            0 {
-                [int]$WindowsInstaller -eq [int]$Software.WindowsInstaller -Or [String]::IsNullOrWhiteSpace($Software.WindowsInstaller)
-            }
-        }
-    }
-    else {
-        $true
-    }
-
-    $_SystemComponent = if ($PSBoundParameters.ContainsKey('SystemComponent')) {
-        switch ($SystemComponent) {
-            1 {
-                [int]$SystemComponent -eq [int]$Software.SystemComponent
-            }
-            0 {
-                [int]$SystemComponent -eq [int]$Software.SystemComponent -Or [String]::IsNullOrWhiteSpace($Software.SystemComponent)
-            }
-        }
-    }
-    else {
-        $true
-    }
-
-    if ($_.DisplayName -like $DisplayName -And $_WindowsInstaller -And $_SystemComponent) {
-        if ($PSBoundParameters.Keys -match 'Version(?:LessThan|EqualTo|GreaterThan)') {
-            try {
-                Write-Verbose ('Parsing DisplayVersion {0} for software "{1}"' -f $Software.DisplayVersion, $Software.DisplayName)
-                [Version]$DisplayVersion = $Software.DisplayVersion.Replace('-','.').Replace('_','.')
-            }
-            catch {
-                Write-Verbose ('Could not parse version {0} for software "{1}"' -f $Software.DisplayVersion, $Software.DisplayName)
-                return $false
-            }
-
-            $Result = foreach ($Match in [Regex]::Matches($PSBoundParameters.Keys, 'Version(?:LessThan|EqualTo|GreaterThan)')) {
-                $Operator = $Match.Value
-                [Version]$VersionToCompare = $PSBoundParameters[$Operator]
-
-                $OperatorHt = @{
-                    'VersionLessThan'    = '-lt'
-                    'VersionEqualTo'     = '-eq'
-                    'VersionGreaterThan' = '-gt'
-                }
-
-                $r = switch ($Operator) {
-                    'VersionLessThan' {
-                        [Version]$DisplayVersion -lt [Version]$VersionToCompare
-                    }
-                    'VersionEqualTo' {
-                        [Version]$DisplayVersion -eq [Version]$VersionToCompare
-                    }
-                    'VersionGreaterThan' {
-                        [Version]$DisplayVersion -gt [Version]$VersionToCompare
-                    }
-                }
-
-                Write-Verbose ('Comparing {0} {1} {2}: {3}' -f $DisplayVersion, $OperatorHt[$Operator], $VersionToCompare, $r)
-
-                $r
-            }
-
-            if ($Result -notcontains $false) { 
-                Write-Verbose ('Software "{0}" has version {1} which is {2} {3}' -f 
-                    $Software.DisplayName, 
-                    $Software.DisplayVersion, 
-                    $Operator.Replace('Version','').Replace('Than',' than').Replace('EqualTo','equal to').ToLower(), 
-                    $VersionToCompare)
-                return $true 
-            }
-            else {
-                Write-Verbose ('Software "{0}" has version {1} which is not {2} {3}' -f 
-                    $Software.DisplayName, 
-                    $Software.DisplayVersion, 
-                    $Operator.Replace('Version','').Replace('Than',' than').Replace('EqualTo','equal to').ToLower(), 
-                    $VersionToCompare)
-                return $false
-            }
-        }
-        else {
-            return $true
-        }
-    }
-    else {
-        return $false
-    }
+$GetInstalledSoftwareSplat = @{
+    DisplayName     = $DisplayName
+    Architecture    = $Architecture
+    HivesToSearch   = $HivesToSearch
 }
+if ($PSBoundParameters.ContainsKey('WindowsInstaller')) { $GetInstalledSoftwareSplat['WindowsInstaller'] = $WindowsInstaller }
+if ($PSBoundParameters.ContainsKey('SystemComponent')) { $GetInstalledSoftwareSplat['SystemComponent'] = $SystemComponent }
+if ($PSBoundParameters.ContainsKey('VersionLessThan')) { $GetInstalledSoftwareSplat['VersionLessThan'] = $VersionLessThan }
+if ($PSBoundParameters.ContainsKey('VersionEqualTo')) { $GetInstalledSoftwareSplat['VersionEqualTo'] = $VersionEqualTo }
+if ($PSBoundParameters.ContainsKey('VersionGreaterThan')) { $GetInstalledSoftwareSplat['VersionGreaterThan'] = $VersionGreaterThan }
+
+[array]$InstalledSoftware = Get-InstalledSoftware @GetInstalledSoftwareSplat
 
 if ($InstalledSoftware.Count -eq 0) {
-    if ($PSBoundParameters.Keys -match '^Version(?:LessThan|EqualTo|GreaterThan)$') {
-        Write-Verbose ('Software "{0}" not installed or version does not match criteria' -f $DisplayName)
-    }
-    else {
-        Write-Verbose ('Software "{0}" not installed' -f $DisplayName)
-    }
+    Write-Verbose ('Software "{0}" not installed or version does not match criteria' -f $DisplayName)
 }
 elseif ($InstalledSoftware.Count -gt 1) {
     if ($UninstallAll.IsPresent) {
