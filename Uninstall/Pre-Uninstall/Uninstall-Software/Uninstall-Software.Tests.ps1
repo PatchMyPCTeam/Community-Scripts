@@ -50,7 +50,7 @@ BeforeAll {
 
     Mock Start-Process {}
 
-    Mock Get-ItemProperty {
+    Mock Get-ItemProperty -ParameterFilter { $Path -eq 'registry::HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' } {
         $64HKLMMockedARPData
     }
 }
