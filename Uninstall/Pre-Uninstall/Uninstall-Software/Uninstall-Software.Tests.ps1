@@ -1,4 +1,6 @@
 BeforeAll {
+    Push-Location $PSScriptRoot
+
     $64HKLMMockedARPData = @(
         [PSCustomObject]@{
             DisplayName = '7-Zip 22.01 (x64 edition)'
@@ -48,15 +50,9 @@ BeforeAll {
 
     Mock Start-Process {}
 
-    function Get-InstalledSoftware {
-        # Function defined / used within the script
-        # Need to define it before we can mock it with Pester
-    }
-
-    Mock Get-InstalledSoftware {
-        param($Architecture, $HivesToSearch)
+    Mock Get-ItemProperty {
         $64HKLMMockedARPData
-    } -ParameterFilter { $Architecture -eq 'x64' -and $HivesToSearch -eq 'HKLM' }
+    }
 }
 
 Describe 'Uninstall-Software.ps1' {
@@ -235,4 +231,8 @@ Describe 'Uninstall-Software.ps1' {
     it 'uninstall software because it is greater than 20.00 and less than 22.00 and equal to 21.01' {
         .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -Architecture 'x64' -HivesToSearch 'HKLM' -WindowsInstaller 0 -VersionGreaterThan '20.0' -VersionLessThan '22.0' -VersionEqualTo '21.01' | Should -Invoke -CommandName 'Start-Process' -Times 1
     }
+}
+
+AfterAll {
+    Pop-Location
 }
