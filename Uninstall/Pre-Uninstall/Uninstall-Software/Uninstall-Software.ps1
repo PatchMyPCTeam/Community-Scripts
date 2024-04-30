@@ -240,7 +240,7 @@ function Get-InstalledSoftware {
     foreach ($Result in $AllFoundObjects) {
         try {
             if ($Result.DisplayName -notlike $DisplayName) {
-                Write-Verbose ('Skipping {0} as name does not match {1}' -f $Result.DisplayName, $DisplayName)
+                #Write-Verbose ('Skipping {0} as name does not match {1}' -f $Result.DisplayName, $DisplayName)
                 continue
             }
             # Casting to [bool] will return $false if the property is 0 or not present
