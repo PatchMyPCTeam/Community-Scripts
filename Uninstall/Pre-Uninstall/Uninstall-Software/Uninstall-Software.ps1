@@ -223,16 +223,12 @@ function Get-InstalledSoftware {
         switch ($HivesToSearch) {
             'HKLM' {
                 [string]::Format('registry::HKEY_LOCAL_MACHINE\{0}', $PathFragment)
-
             }
             'HKCU' {
-                # There is no Wow6432Node Uninstall key for HKEY_CURRENT_USER
-                [string]::Format('registry::HKEY_CURRENT_USER\{0}', $PathFragment.Replace('\Wow6432Node', ''))
+                [string]::Format('registry::HKEY_CURRENT_USER\{0}', $PathFragment)
             }
         }
     }
-    # Remove duplicate created when -Architecture Both|x86 -HivesToSearch HKCU,HKLM is used
-    $FullPaths = $FullPaths | Select-Object -Unique
 
     Write-Verbose "Will search the following registry paths based on [Architecture = $Architecture] [HivesToSearch = $HivesToSearch]"
     foreach ($RegPath in $FullPaths) {
