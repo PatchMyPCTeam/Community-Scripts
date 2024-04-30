@@ -53,6 +53,11 @@ BeforeAll {
     Mock Get-ItemProperty -ParameterFilter { $Path -eq 'registry::HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' } {
         $64HKLMMockedARPData
     }
+
+    function Get-ProductState {}
+    Mock Get-ProductState {
+        5
+    }
 }
 
 Describe 'Uninstall-Software.ps1' {
