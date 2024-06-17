@@ -1,45 +1,98 @@
-# Get-OobeAndAppInstallationStatus
+# Get-IsInProvisioningMode
 
 ## Synopsis
-This PowerShell script checks if the device is in OOBE (Out Of Box Experience) and searches for installed software by DisplayName. It returns 'Applicable' if the specified software is not found and the device is still in OOBE.
+
+Returns 'Applicable' if the device is in provisioning mode.  
+
+Created on:   2024-06-17  
+Created by:   Ben Whitmore @PatchMyPC  
+Filename:     Get-IsInProvisioningMode.ps1  
 
 ## Description
-Use this script as a requirement rule on a Win32 app to ensure the app is only applicable if the software listed in `$appNameList` is not installed and the device is still in OOBE. The script searches through specified registry paths to find installed software that matches a given DisplayName. It also determines whether OOBE (Windows Welcome) has been completed by loading the Kernel32 class from the Api namespace. If no software from `$appNameList` is installed and OOBE is not complete, 'Applicable' is written to the output stream.
+
+This script can be used as an additional requirement rule for a Win32 app to ensure the Win32 app is only applicable if the device is in provisioning mode. There are several conditions that can be checked if a device is provisioning mode. If the device is found to be in provisioning mode, the script will return 'Applicable'.
+
+References/credit:  
+[Microsoft Documentation](https://learn.microsoft.com/en-us/windows/client-management/mdm/enrollmentstatustracking-csp)
 
 ## Usage
-To use this script, define the application names in `$appNameList` you wish to check for. If any of these apps are installed, the script will not return 'Applicable'.  
-  
-You can call the function with the preferred `conditionalTest` parameter (`'onlyOOBE'`, `'onlyApps'`, or `'both'`).  
 
-# Define applications to check
-The array is defined within the script body because we cannot pass parameters to a requirement rule script.  
+To use this script, add it as an additional requirement rule to the Win32 app. You can change the following variable to perform beta confidence testing if the device is being provisioned.
+
 ```powershell
-$appNameList = @('Cisco Secure Client', 'Cisco AnyConnect')
+$betaHighConfidenceTesting -eq $false
+````
+
+### Registry Tests
+
+The following registry tests are performed to determine if the device is in provisioning mode.
+
+```yml
+  TestName: "Reg_ProvisioningAgentStatus"
+  TestPath: "HKLM\SOFTWARE\Microsoft\Provisioning\Agent"
+  TestValueName: "CurrentEvent"
+  ProvisioningFinishedValue: "0x5"
 ```
+
+```yml
+  TestName: "Reg_AutopilotDeviceSetupPhase"
+  TestPath: "HKLM\SOFTWARE\Microsoft\Windows\Autopilot\EnrollmentStatusTracking\Device\Setup"
+  TestValueName: "HasProvisioningCompleted"
+  ProvisioningFinishedValue: "0xffffffff"
+```
+
+```yml
+ TestName: "Reg_AutopilotAccountSetupPhase"
+  TestPath: "HKLM\SOFTWARE\Microsoft\Windows\Autopilot\EnrollmentStatusTracking\{^S-1-12-1-(\d+-)+\d+$}\Setup"
+  TestValueName: "HasProvisioningCompleted"
+  ProvisioningFinishedValue: "0xffffffff"
+```
+
+```yml
+  TestName: "Reg_DevicePreparationCategoryStatus"
+  TestPath: "HKLM\SOFTWARE\Microsoft\Provisioning\AutopilotSettings"
+  TestValueName: "DevicePreparationCategory.Status"
+  TestJsonValue: "categoryState"
+  ProvisioningFinishedValue: "succeeded"
+```
+
+```yml
+  TestName: "Reg_DeviceSetupCategoryStatus"
+  TestPath: "HKLM\SOFTWARE\Microsoft\Provisioning\AutopilotSettings"
+  TestValueName: "DeviceSetupCategory.Status"
+  TestJsonValue: "categoryState"
+  ProvisioningFinishedValue: "succeeded"
+```
+
+```yml
+  TestName: "Reg_AccountSetupCategoryStatus"
+  TestPath: "HKLM\SOFTWARE\Microsoft\Provisioning\AutopilotSettings"
+  TestValueName: "AccountSetupCategory.Status"
+  TestJsonValue: "categoryState"
+  ProvisioningFinishedValue:
+    - "succeeded"
+    - "notStarted"
+```
+
+### WMI Tests
+
+The following WMI tests are performed to determine if the device is in provisioning mode.
 
 ```yaml
-Type: Array
-Parameter Sets: (All)
-Required: False
-Position: 0
-Default value: ('Cisco Secure Client', 'Cisco AnyConnect')
-Accept pipeline input: False
-Accept wildcard characters: False
+  TestName: "Wmi_HasProvisioningCompleted"
+  TestClass: "root\cimv2\mdm\dmmap"
+  TestNamespace: "MDM_EnrollmentStatusTracking_Setup01"
+  TestValueName: "HasProvisioningCompleted"
+  ProvisioningFinishedValue: true
 ```
 
-# Define conditions to test
-The script will test for apps and oobe by default but can be customized with the `conditionalTest` parameter which is set to `'both'` by default and hardcoded in the script.  
-```yaml
-Type: String
-Parameter Sets: (All)
-Required: False
-Position: 0
-Default value: both
-Accept pipeline input: False
-Accept wildcard characters: False
+## Further Testing
+You can uncomment lines 306 & 396 to see the results of the search using the $appNameList array. Dont forget to comment it out again before using the script in Intune.  
+
+```powershell
+306  #$fullResults
 ```
 
-# Execute the script
-Assign the script as an additional requirement rule to the Win32 app if you only want the WIn32 app to be applicable if the device is in OOBE and the specified software is not installed.  
-  
-You can uncomment line 150 to test the script to see what applications are installed. Remeber to comment it out again before using the script as a requirement rule.
+```powershell
+396  #$groupResults
+```
