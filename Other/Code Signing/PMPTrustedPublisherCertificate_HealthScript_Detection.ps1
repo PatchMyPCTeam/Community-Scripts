@@ -70,6 +70,9 @@ try {
 
         if ($certExists) {
             Write-Output "Certificate Installed"
+            exit 0
+        } else {
+            exit 1
         }
     }
     catch {
