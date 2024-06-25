@@ -3,7 +3,7 @@
     Proactive Remediation (Health Script) to test if the Patch My PC code-signing certificate is installed in the Local Machine Trusted Publisher store.
 
 .NOTES
-    FileName:    PMPTrustedPublisherCertificate_HealthScript_Detection_.ps1
+    FileName:    PMPTrustedPublisherCertificate_HealthScript_Detection.ps1
     Author:      Ben Whitmore
     Date:        25th June 2024
     
