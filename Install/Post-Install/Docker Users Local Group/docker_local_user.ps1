@@ -1,15 +1,15 @@
-$local_group = "docker-users"
-$local_group_members = Get-LocalGroupMember -name $local_group
+$localGroup = "docker-users"
+$localGroupMembers = Get-LocalGroupMember -Name $localGroup | Select-Object -ExpandProperty Name
 
-# Getting current session user
-$currentUser = get-wmiobject win32_process -Filter "name='explorer.exe'" |
-    ForEach-Object { $_.GetOwner() } | Select-Object -Unique -Expand User
+$loggedOnUsers = get-wmiobject win32_process -Filter "name='explorer.exe'" |
+    ForEach-Object { "$($_.GetOwner().Domain)\$($_.GetOwner().User)" } | Select-Object -Unique
 
-# If user is not in 'docker-users' add current user
-if (!($local_group_members -contains $currentUser)){
-    Add-LocalGroupMember -Group $local_group -Member $currentUser
-}
-else {
-    write-host "$user already in group"
-    Exit
+foreach ($user in $loggedOnUsers) {
+    if ($user -notin $localGroupMembers){
+        Write-Host "Adding $user to group"
+        Add-LocalGroupMember -Group $localGroup -Member $user
+    }
+    else {
+        Write-Host "$user already in group"
+    }
 }
