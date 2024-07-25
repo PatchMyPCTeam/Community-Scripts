@@ -365,6 +365,8 @@ function Get-ProductState {
         [String]$ProductCode
     )
 
+    # TODO: Query the registry, instead of WindowsInstaller COM object, to determine if the product is installed for the current user, so we can log the username who has the software installed
+
     $WindowsInstaller = New-Object -ComObject WindowsInstaller.Installer
     $ProductState = $WindowsInstaller.ProductState($ProductCode)
     [Runtime.Interopservices.Marshal]::ReleaseComObject($WindowsInstaller) | Out-Null
@@ -408,21 +410,26 @@ function Uninstall-Software {
 
             $ProductState = Get-ProductState -ProductCode $ProductCode
 
-            switch ($ProductState) {
-                1 { Write-Verbose ('Product code "{0}" is advertised.' -f $ProductCode) }
-                # TODO: Query the registry, instead of WindowsInstaller COM object, to determine if the product is installed for the current user, so we can log the username who has the software installed
-                2 { Write-Verbose ('Product code "{0}" is installed for another user.' -f $ProductCode) }
-                5 { Write-Verbose ('Product code "{0}" is installed.' -f $ProductCode) }
-                default { 
-                    Write-Verbose ('Product code "{0}" is not installed.' -f $ProductCode) 
+            if ($ProductState -eq 5) {
+                Write-Verbose ('Product code "{0}" is installed.' -f $ProductCode)
+            }
+            elseif ($ProductState -eq 1) {
+                Write-Verbose ('Product code "{0}" is advertised.' -f $ProductCode)
+            }
+            else {
+                if ($ProductState -eq 2) {
+                    Write-Verbose ('Product code "{0}" is installed for another user.' -f $ProductCode)
+                }
+                else {
+                    Write-Verbose ('Product code "{0}" is not installed.' -f $ProductCode)
+                }
 
-                    if ($Force.IsPresent) {
-                        Write-Verbose 'Uninstall will be attempted anyway as -Force was specfied.'
-                    }
-                    else {
-                        Write-Verbose 'Will not attempt to uninstall.'
-                        return
-                    }
+                if ($Force.IsPresent) {
+                    Write-Verbose 'Uninstall will be attempted anyway as -Force was specfied.'
+                }
+                else {
+                    Write-Verbose 'Will not attempt to uninstall.'
+                    return
                 }
             }
 

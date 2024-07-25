@@ -236,6 +236,34 @@ Describe 'Uninstall-Software.ps1' {
     it 'uninstall software because it is greater than 20.00 and less than 22.00 and equal to 21.01' {
         .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -Architecture 'x64' -HivesToSearch 'HKLM' -WindowsInstaller 0 -VersionGreaterThan '20.0' -VersionLessThan '22.0' -VersionEqualTo '21.01' | Should -Invoke -CommandName 'Start-Process' -Times 1
     }
+
+    it 'uninstall if MSI product state is "installed"' {
+        Mock Get-ProductState {
+            5
+        }
+        .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -Architecture 'x64' -HivesToSearch 'HKLM' -WindowsInstaller 1 | Should -Invoke -CommandName 'Start-Process' -Times 1
+    }
+
+    it 'not uninstall if MSI product state is "absent"' {
+        Mock Get-ProductState {
+            -1
+        }
+        .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -Architecture 'x64' -HivesToSearch 'HKLM' -WindowsInstaller 1 | Should -Invoke -CommandName 'Start-Process' -Times 0
+    }
+
+    it 'verify 1605 is ignored when -Force is used and MSI product state is installed for another user' {
+        Mock Get-ProductState {
+            2
+        }
+
+        Mock Start-Process {
+            [PSCustomObject]@{
+                ExitCode = 1605
+            }
+        }
+
+        .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -Architecture 'x64' -HivesToSearch 'HKLM' -WindowsInstaller 1 -Force | Should -Be 0
+    }
 }
 
 AfterAll {
