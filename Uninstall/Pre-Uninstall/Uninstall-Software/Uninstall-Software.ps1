@@ -408,32 +408,28 @@ function Uninstall-Software {
 
             $ProductState = Get-ProductState -ProductCode $ProductCode
 
-            if ($ProductState -eq 5) {
-                Write-Verbose ('Product code "{0}" is installed.' -f $ProductCode)
-            }
-            elseif ($ProductState -eq 1) {
-                Write-Verbose ('Product code "{0}" is advertised.' -f $ProductCode)
-            }
-            else {
-                if ($ProductState -eq 2) {
-                    Write-Verbose ('Product code "{0}" is installed for another user.' -f $ProductCode)
-                }
-                else {
-                    Write-Verbose ('Product code "{0}" is not installed.' -f $ProductCode)
-                }
-                if ($Force) {
-                    Write-Verbose 'Uninstall will be attempted anyway as -Force was specfied.'
-                }
-                else {
-                    Write-Verbose 'Will not attempt to uninstall.'
-                    return
+            switch ($ProductState) {
+                1 { Write-Verbose ('Product code "{0}" is advertised.' -f $ProductCode) }
+                # TODO: Query the registry, instead of WindowsInstaller COM object, to determine if the product is installed for the current user, so we can log the username who has the software installed
+                2 { Write-Verbose ('Product code "{0}" is installed for another user.' -f $ProductCode) }
+                5 { Write-Verbose ('Product code "{0}" is installed.' -f $ProductCode) }
+                default { 
+                    Write-Verbose ('Product code "{0}" is not installed.' -f $ProductCode) 
+
+                    if ($Force.IsPresent) {
+                        Write-Verbose 'Uninstall will be attempted anyway as -Force was specfied.'
+                    }
+                    else {
+                        Write-Verbose 'Will not attempt to uninstall.'
+                        return
+                    }
                 }
             }
 
             $MsiLog = '{0}\{1}_{2}.msi.log' -f 
-            $env:temp, 
-            [String]::Join('', $Software.DisplayName.Replace(' ', '_').Split([System.IO.Path]::GetInvalidFileNameChars())), 
-            [String]::Join('', $Software.DisplayVersion.Split([System.IO.Path]::GetInvalidFileNameChars()))
+                $env:temp, 
+                [String]::Join('', $Software.DisplayName.Replace(' ', '_').Split([System.IO.Path]::GetInvalidFileNameChars())), 
+                [String]::Join('', $Software.DisplayVersion.Split([System.IO.Path]::GetInvalidFileNameChars()))
 
             $StartProcessSplat = @{
                 FilePath     = 'msiexec.exe'
@@ -516,7 +512,7 @@ function Uninstall-Software {
 
         }
 
-        if ($Process.ExitCode -eq 1605 -and $Force) {
+        if ($Process.ExitCode -eq 1605 -and $Force.IsPresent) {
             Write-Verbose 'Exit code 1605 detected (product not installed) will be ignored since -Force was specified.'
             return 0
         }
@@ -537,7 +533,7 @@ $UninstallSoftwareSplat = @{
     AdditionalMSIArguments = $AdditionalMSIArguments
     AdditionalEXEArguments = $AdditionalEXEArguments
     ErrorAction            = $ErrorActionPreference
-    Force                  = $Force
+    Force                  = $Force.IsPresent
 }
 
 if ($PSBoundParameters.ContainsKey('ProcessName')) {
@@ -565,11 +561,14 @@ $GetInstalledSoftwareSplat = @{
     Architecture  = $Architecture
     HivesToSearch = $HivesToSearch
 }
-if ($PSBoundParameters.ContainsKey('WindowsInstaller')) { $GetInstalledSoftwareSplat['WindowsInstaller'] = $WindowsInstaller }
-if ($PSBoundParameters.ContainsKey('SystemComponent')) { $GetInstalledSoftwareSplat['SystemComponent'] = $SystemComponent }
-if ($PSBoundParameters.ContainsKey('VersionLessThan')) { $GetInstalledSoftwareSplat['VersionLessThan'] = $VersionLessThan }
-if ($PSBoundParameters.ContainsKey('VersionEqualTo')) { $GetInstalledSoftwareSplat['VersionEqualTo'] = $VersionEqualTo }
-if ($PSBoundParameters.ContainsKey('VersionGreaterThan')) { $GetInstalledSoftwareSplat['VersionGreaterThan'] = $VersionGreaterThan }
+
+switch ($PSBoundParameters.Keys) {
+    'WindowsInstaller'   { $GetInstalledSoftwareSplat['WindowsInstaller'] = $WindowsInstaller }
+    'SystemComponent'    { $GetInstalledSoftwareSplat['SystemComponent'] = $SystemComponent }
+    'VersionLessThan'    { $GetInstalledSoftwareSplat['VersionLessThan'] = $VersionLessThan }
+    'VersionEqualTo'     { $GetInstalledSoftwareSplat['VersionEqualTo'] = $VersionEqualTo }
+    'VersionGreaterThan' { $GetInstalledSoftwareSplat['VersionGreaterThan'] = $VersionGreaterThan }
+}
 
 [array]$InstalledSoftware = Get-InstalledSoftware @GetInstalledSoftwareSplat
 
