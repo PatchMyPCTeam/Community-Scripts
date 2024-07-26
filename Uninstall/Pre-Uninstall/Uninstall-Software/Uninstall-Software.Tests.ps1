@@ -151,6 +151,15 @@ Describe 'Uninstall-Software.ps1' {
         { .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -Architecture 'x64' -HivesToSearch 'HKLM' -AdditionalArguments '/FakeParameter' -AdditionalEXEArguments '/FakeParameter' -AdditionalMSIArguments 'MSIRMSHUTDOWN=0' } | Should -Throw -ExceptionType ([System.Management.Automation.ParameterBindingException])
     }
 
+    it 'uninstall EXE 7-Zip with -EnforcedArguments' {
+        Mock Start-Process {} -Verifiable -ParameterFilter { 
+            $FilePath -eq 'C:\Program Files\7-Zip\Uninstall.exe' -and 
+            $ArgumentList -eq '/EnforcedParameter'
+        }
+
+        .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -Architecture 'x64' -HivesToSearch 'HKLM' -WindowsInstaller 0 -EnforcedArguments '/EnforcedParameter' | Should -InvokeVerifiable
+    }
+
     it 'validate Split-UninstallString correctly parses UninstallString: <UninstallString>' -TestCases @(
         @{ UninstallString = '"C:\Program Files\7-Zip\Uninstall.exe" /S /abc /whatever';         Expected = @('C:\Program Files\7-Zip\Uninstall.exe', '/S /abc /whatever') },
         @{ UninstallString = 'C:\Program Files\7-Zip\Uninstall.exe /S';                          Expected = @('C:\Program Files\7-Zip\Uninstall.exe', '/S') },

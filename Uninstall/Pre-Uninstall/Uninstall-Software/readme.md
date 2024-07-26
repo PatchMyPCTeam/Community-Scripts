@@ -7,18 +7,27 @@ Uninstall software based on the DisplayName of said software in the registry
 
 ### AdditionalArguments (Default)
 ```
-Uninstall-Software.ps1 -DisplayName <String> [-Architecture <String>] [-HivesToSearch <String[]>] [-WindowsInstaller <Int32>]
- [-SystemComponent <Int32>] [-VersionLessThan <Version>] [-VersionEqualTo <Version>]
- [-VersionGreaterThan <Version>] [-AdditionalArguments <String>] [-UninstallAll] [-ProcessName <String>]
- [<CommonParameters>]
+Uninstall-Software.ps1 -DisplayName <String> [-Architecture <String>] [-HivesToSearch <String[]>]
+ [-WindowsInstaller <Int32>] [-SystemComponent <Int32>] [-VersionLessThan <Version>]
+ [-VersionEqualTo <Version>] [-VersionGreaterThan <Version>] [-AdditionalArguments <String>] [-UninstallAll]
+ [-ProcessName <String>] [-ProgressAction <ActionPreference>] [<CommonParameters>]
+```
+
+### EnforcedArguments
+```
+Uninstall-Software.ps1 -DisplayName <String> [-Architecture <String>] [-HivesToSearch <String[]>]
+ [-WindowsInstaller <Int32>] [-SystemComponent <Int32>] [-VersionLessThan <Version>]
+ [-VersionEqualTo <Version>] [-VersionGreaterThan <Version>] [-EnforcedArguments <String>] [-UninstallAll]
+ [-ProcessName <String>] [-ProgressAction <ActionPreference>] [<CommonParameters>]
 ```
 
 ### AdditionalEXEorMSIArguments
 ```
-Uninstall-Software.ps1 -DisplayName <String> [-Architecture <String>] [-HivesToSearch <String[]>] [-WindowsInstaller <Int32>]
- [-SystemComponent <Int32>] [-VersionLessThan <Version>] [-VersionEqualTo <Version>]
- [-VersionGreaterThan <Version>] [-AdditionalMSIArguments <String>] [-AdditionalEXEArguments <String>]
- [-UninstallAll] [-ProcessName <String>] [<CommonParameters>]
+Uninstall-Software.ps1 -DisplayName <String> [-Architecture <String>] [-HivesToSearch <String[]>]
+ [-WindowsInstaller <Int32>] [-SystemComponent <Int32>] [-VersionLessThan <Version>]
+ [-VersionEqualTo <Version>] [-VersionGreaterThan <Version>] [-AdditionalMSIArguments <String>]
+ [-AdditionalEXEArguments <String>] [-UninstallAll] [-ProcessName <String>]
+ [-ProgressAction <ActionPreference>] [<CommonParameters>]
 ```
 
 ## DESCRIPTION
@@ -57,6 +66,7 @@ Uninstall-Software.ps1 -DisplayName "Greenshot"
 ```
 
 Uninstalls Greenshot if "Greenshot" is detected as the DisplayName in a key under either of the registry key paths:
+
 - SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall
 - SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall
 
@@ -91,6 +101,13 @@ Uninstall-Software.ps1 -DisplayName "SomeSoftware" -VersionGreaterThan 1.0.0
 ```
 
 Uninstalls SomeSoftware if the version is greater than 1.0.0
+
+### EXAMPLE 6
+```
+Uninstall-Software.ps1 -DisplayName "AnyDesk" -EnforcedArguments "--remove --silent"
+```
+
+Uninstalls AnyDesk with the enforced arguments "--remove --silent", instead of using the default parameters in the UninstallString.
 
 ## PARAMETERS
 
@@ -131,7 +148,8 @@ Accept wildcard characters: False
 ```
 
 ### -HivesToSearch
-Choose which registry hive to search in while looking for installed software. Acceptable values are;
+Choose which registry hive to search in while looking for installed software.
+Acceptable values are:
 
 - "HKLM" will search in hive HKEY_LOCAL_MACHINE which is typically where system-wide installed software is registered.
 - "HKCU" will search in hive HKEY_CURRENT_USER which is typically where user-based installed software is registered.
@@ -239,6 +257,25 @@ Accept pipeline input: False
 Accept wildcard characters: False
 ```
 
+### -EnforcedArguments
+A string which includes the arguments you would like passed to the uninstaller.
+
+Cannot be used with -AdditionalArguments, -AdditionalMSIArguments, or -AdditionalEXEArguments.
+
+This will not be used for .msi based software uninstalls.
+
+```yaml
+Type: String
+Parameter Sets: EnforcedArguments
+Aliases:
+
+Required: False
+Position: Named
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
 ### -AdditionalArguments
 A string which includes the additional parameters you would like passed to the uninstaller.
 
@@ -326,6 +363,21 @@ The .exe extension is not required, and the process name is case-insensitive.
 Type: String
 Parameter Sets: (All)
 Aliases:
+
+Required: False
+Position: Named
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -ProgressAction
+{{ Fill ProgressAction Description }}
+
+```yaml
+Type: ActionPreference
+Parameter Sets: (All)
+Aliases: proga
 
 Required: False
 Position: Named

@@ -65,6 +65,12 @@
     Specify a version number to use as an additional criteria when trying to find installed software.
 
     This parameter can be used in conjuction with -VersionLessThan and -VersionEqualTo.
+.PARAMETER EnforcedArguments
+    A string which includes the arguments you would like passed to the uninstaller.
+
+    Cannot be used with -AdditionalArguments, -AdditionalMSIArguments, or -AdditionalEXEArguments.
+
+    This will not be used for .msi based software uninstalls.
 .PARAMETER AdditionalArguments
     A string which includes the additional parameters you would like passed to the uninstaller.
 
@@ -125,6 +131,10 @@
     PS C:\> Uninstall-Software.ps1 -DisplayName "SomeSoftware" -VersionGreaterThan 1.0.0
 
     Uninstalls SomeSoftware if the version is greater than 1.0.0
+.EXAMPLE
+    PS C:\> Uninstall-Software.ps1 -DisplayName "AnyDesk" -EnforcedArguments "--remove --silent"
+
+    Uninstalls AnyDesk with the enforced arguments "--remove --silent", instead of using the default parameters in the UninstallString.
 #>
 [CmdletBinding(DefaultParameterSetName = 'AdditionalArguments')]
 param (
@@ -153,6 +163,9 @@ param (
 
     [Parameter()]
     [String]$VersionGreaterThan,
+
+    [Parameter(ParameterSetName = 'EnforcedArguments')]
+    [String]$EnforcedArguments,
 
     [Parameter(ParameterSetName = 'AdditionalArguments')]
     [String]$AdditionalArguments,
@@ -383,6 +396,9 @@ function Uninstall-Software {
         [PSCustomObject]$Software,
 
         [Parameter()]
+        [String]$EnforcedArguments,
+
+        [Parameter()]
         [String]$AdditionalArguments,
 
         [Parameter()]
@@ -406,6 +422,7 @@ function Uninstall-Software {
     }
     else {
         $ProductCode = [Regex]::Match($Software.UninstallString, "^msiexec.+(\{.+\})", 'IgnoreCase').Groups[1].Value
+
         if ($ProductCode) { 
 
             $ProductState = Get-ProductState -ProductCode $ProductCode
@@ -486,6 +503,10 @@ function Uninstall-Software {
                 Write-Verbose ('Adding additional EXE arguments "{0}" to UninstallString' -f $AdditionalEXEArguments)
                 $Arguments = "{0} {1}" -f $Arguments, $AdditionalEXEArguments
             }
+            elseif (-not [String]::IsNullOrWhiteSpace($EnforcedArguments)) {
+                Write-Verbose ('Using enforced arguments "{0}" instead of those in UninstallString' -f $EnforcedArguments)
+                $Arguments = $EnforcedArguments
+            }
 
             if (-not [String]::IsNullOrWhiteSpace($Arguments)) {
                 $StartProcessSplat['ArgumentList'] = $Arguments.Trim()
@@ -536,6 +557,7 @@ $null = Start-Transcript -Path $log -Append -NoClobber -Force
 $VerbosePreference = 'Continue'
 
 $UninstallSoftwareSplat = @{
+    EnforcedArguments      = $EnforcedArguments
     AdditionalArguments    = $AdditionalArguments
     AdditionalMSIArguments = $AdditionalMSIArguments
     AdditionalEXEArguments = $AdditionalEXEArguments
