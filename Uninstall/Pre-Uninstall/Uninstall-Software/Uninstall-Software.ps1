@@ -150,10 +150,12 @@ param (
     [String[]]$HivesToSearch = 'HKLM',
 
     [Parameter()]
-    [Boolean]$WindowsInstaller,
+    [ValidateSet(1, 0)]
+    [Int]$WindowsInstaller,
 
     [Parameter()]
-    [Boolean]$SystemComponent,
+    [ValidateSet(1, 0)]
+    [Int]$SystemComponent,
 
     [Parameter()]
     [String]$VersionLessThan,
@@ -200,10 +202,12 @@ function Get-InstalledSoftware {
         [String[]]$HivesToSearch = 'HKLM',
 
         [Parameter()]
-        [Boolean]$WindowsInstaller,
+        [ValidateSet(1, 0)]
+        [Int]$WindowsInstaller,
     
         [Parameter()]
-        [Boolean]$SystemComponent,
+        [ValidateSet(1, 0)]
+        [Int]$SystemComponent,
     
         [Parameter()]
         [String]$VersionLessThan,
@@ -258,13 +262,14 @@ function Get-InstalledSoftware {
                 #Write-Verbose ('Skipping {0} as name does not match {1}' -f $Result.DisplayName, $DisplayName)
                 continue
             }
-            # Casting to [bool] will return $false if the property is 0 or not present
-            if ($PSBoundParameters.ContainsKey('WindowsInstaller') -and [bool]$Result.WindowsInstaller -ne $WindowsInstaller) {
-                Write-Verbose ('Skipping {0} as WindowsInstaller value {1} does not match {2}' -f [bool]$Result.DisplayName, $Result.WindowsInstaller, $WindowsInstaller)
+            # Casting to [bool] will return $false if the registry property is 0 or not present, and can also cast integers 0/1 to $false/$true.
+            # Function accepts integers however, as supplying 1 for an expected bool works within powershell, but not on a powershell.exe command line.
+            if ($PSBoundParameters.ContainsKey('WindowsInstaller') -and [bool]$Result.WindowsInstaller -ne [bool]$WindowsInstaller) {
+                Write-Verbose ('Skipping {0} as WindowsInstaller value {1} does not match {2}' -f $Result.DisplayName, $Result.WindowsInstaller, $WindowsInstaller)
                 continue
             }
-            if ($PSBoundParameters.ContainsKey('SystemComponent') -and [bool]$Result.SystemComponent -ne $SystemComponent) {
-                Write-Verbose ('Skipping {0} as SystemComponent value {1} does not match {2}' -f [bool]$Result.DisplayName, $Result.SystemComponent, $SystemComponent)
+            if ($PSBoundParameters.ContainsKey('SystemComponent') -and [bool]$Result.SystemComponent -ne [bool]$SystemComponent) {
+                Write-Verbose ('Skipping {0} as SystemComponent value {1} does not match {2}' -f $Result.DisplayName, $Result.SystemComponent, $SystemComponent)
                 continue
             }
             if ($PSBoundParameters.ContainsKey('VersionEqualTo') -and (ConvertTo-Version $Result.DisplayVersion) -ne (ConvertTo-Version $VersionEqualTo)) {
