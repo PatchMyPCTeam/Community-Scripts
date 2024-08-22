@@ -4,7 +4,8 @@
 
 Searches for installed software by DisplayName and returns 'Applicable' if not found.  
 
-Created on:   2024-06-17  
+Created on:   2024-06-17
+Updated on:   2024-08-22
 Created by:   Ben Whitmore @PatchMyPC  
 Filename:     Get-NotInstalledRequirement.ps1  
 
@@ -23,6 +24,8 @@ Author/Maintainer: [@Codaamok](https://github.com/codaamok)
 
 You will need to modify the array variable at the top of the script to specify the app(s) you want to check for. If the apps are found, the script will return nothing, and the requirement will not be met. If the apps are not found, the script will return 'Applicable' and the requirement will be met.  
 
+> **Note**: The script will search for the exact match based on what you enter in $appNameList. You can add asterisk characters (*) if you want to use wildcards.
+
 ### Example 1
 
 ```powershell
@@ -34,6 +37,11 @@ You will need to modify the array variable at the top of the script to specify t
 ```powershell
 [array]$appNameList = @('Google Chrome')
 ````
+
+### Example 3
+```powershell
+[array]$appNameList = @('Google*')
+```
 
 ## Further Testing
 You can uncomment line 105 to see the results of the search using the $appNameList array. Dont forget to comment it out again before using the script in Intune.  
