@@ -84,7 +84,7 @@ function Get-InstalledSoftware {
             $displayName = (Get-ItemProperty -Path $subkey.PSPath -Name DisplayName -ErrorAction SilentlyContinue).DisplayName
 
             foreach ($app in $appName) {
-                if ($displayName -like "*$app*") {
+                if ($displayName -like "$app") {
 
                     # Gather additional information when a match is found
                     $displayVersion = (Get-ItemProperty -Path $subkey.PSPath -Name DisplayVersion -ErrorAction SilentlyContinue).DisplayVersion
