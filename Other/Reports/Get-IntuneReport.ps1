@@ -8,7 +8,8 @@ Filename:     Get-IntuneReport.ps1
 
 .Description
 This script requests the most common Intune reports using the Microsoft Graph API. It supports both application and delegated authentication flows using the Microsoft Graph SDK. 
-The reports are saved in the specified format (CSV or JSON) to the specified path defined by variables in the "Script Variables" section.
+The reports are saved in the specified format csv foprmat be default.
+The delegated interactive authentication flow is used by default.
 
 Requirements:
 
@@ -29,51 +30,79 @@ It is recommended to thoroughly test the script in a non-production environment 
 The author and co-author(s) cannot be held responsible for any damages, losses, or adverse effects that may arise from the use of this script
 You assume all risks and responsibilities associated with its usage
 ---------------------------------------------------------------------------------
+
+.PARAMETER SavePath
+The path where the reports will be saved. Default is `$env:TEMP\IntuneReports`.
+
+.PARAMETER FormatChoice
+The format of the report. Valid formats are 'csv' and 'json'. Default is 'csv'.
+
+.PARAMETER EndpointVersion
+The Microsoft Graph API version to use. Valid endpoints are 'v1.0' and 'beta'. Default is 'beta'.
+
+.PARAMETER TenantId
+The Tenant Id if using the Application authentication flow. Not required for Delegated authentication.
+
+.PARAMETER ClientId
+The Application (client) Id if using the Application authentication flow. Not required for Delegated authentication.
+
+.PARAMETER CertThumbprint
+The certificate thumbprint if using the Application authentication flow with certificate-based authentication. Not required for Delegated authentication.
+
+.PARAMETER ClientSecret
+The client secret if using the Application authentication flow with a client secret. Not required for Delegated authentication.
+
+.PARAMETER AuthFlow
+The authentication flow to use. Valid authentication flows are 'ApplicationCertificate', 'ApplicationClientSecret', and 'Delegated'. Default is 'Delegated'.
+
+.PARAMETER ReportingEndpointReportName
+An array of report names to fetch from the Intune reporting endpoint (e.g., 'AllAppsList', 'AppInstallStatusAggregate'). Default reports include 'AllAppsList', 'AppInstallStatusAggregate', 'AppInvAggregate', and 'AppInvRawData'.
+
+.PARAMETER IntuneReportName
+An array of native Intune report names to fetch (e.g., 'deviceManagement/detectedApps').
+
+.EXAMPLE
+# Example 1: Run the script using default settings (delegated auth, CSV format)
+.\Get-IntuneReport.ps1
+
+.EXAMPLE
+# Example 2: Save reports in JSON format to a specific directory
+.\Get-IntuneReport.ps1 -SavePath "C:\Reports\Intune" -FormatChoice "json"
+
+.EXAMPLE
+# Example 3: Use Application authentication flow with a client secret
+.\Get-IntuneReport.ps1 -TenantId "your-tenant-id" -ClientId "your-client-id" -ClientSecret "your-client-secret" -AuthFlow "ApplicationClientSecret"
+
+.EXAMPLE
+# Example 4: Use Application authentication with a certificate
+.\Get-IntuneReport.ps1 -TenantId "your-tenant-id" -ClientId "your-client-id" -CertThumbprint "your-cert-thumbprint" -AuthFlow "ApplicationCertificate"
+
 #>
 
+param (
+    [string]$SavePath = "$env:TEMP\IntuneReports",  # The path where the reports will be saved
+    [ValidateSet('csv', 'json')] 
+    [string]$FormatChoice = 'csv',  # Valid formats are 'csv' and 'json'
+    [ValidateSet('v1.0', 'beta')] 
+    [string]$EndpointVersion = 'beta',  # Valid endpoints are 'v1.0' and 'beta'
+    [string]$TenantId = '',  # Tenant Id if using the Application auth flow
+    [string]$ClientId = '',  # App registration /client Id if using the Application auth flow
+    [string]$CertThumbprint = '',  # Certificate thumbprint if using the Application auth flow with certificate authentication
+    [string]$ClientSecret = '',  # Client Secret if using the Application auth flow with client secret
 
-###############################       Script Variables       #################################
-##############################################################################################
+    [ValidateSet('ApplicationCertificate', 'ApplicationClientSecret', 'Delegated')] 
+    [string]$AuthFlow = 'Delegated',  # Valid authentication flows are 'ApplicationCertificate', 'ApplicationClientSecret' and 'Delegated'
 
-$savePath = "$env:TEMP\IntuneReports" # The path where the reports will be saved
-$formatChoice = "csv"  # Valid formats are 'csv' and 'json'
-$endpointVersion = 'beta' # Valid endpoints are 'v1.0' and 'beta'
-
-#########################  Application Authentication Flow Variables  ########################
-
-$tenantId = '' # Tenant Id if using the Application auth flow
-$clientId = '' # App registration /client Id if using the Application auth flow
-
-# Certificate thumbprint if using the Application auth flow with certificate authentication
-$certThumbprint = ''
-
-# Client Secret if using the Application auth flow with client secret
-$clientSecret = ''
-
-##############################################################################################
-
-# Choose the authentication flow to use
-$authFlow = 'Delegated' # Valid authentication flows are 'ApplicationCertificate', 'ApplicationClientSecret' and 'Delegated'
-
-# Reports available from the reporting endpoint.
-# https://learn.microsoft.com/en-us/mem/intune/fundamentals/reports-export-graph-available-reports
-# Hash out the reports you do not require by adding a #' to the start of the line
-$reportingEndpointReportName = @(
-    'AllAppsList' # Found under Apps > All Apps
-    'AppInstallStatusAggregate' # Found under Apps > Monitor > App install status
-    'AppInvAggregate' # Found under Apps > Monitor > Discovered apps > Export
-    'AppInvRawData' # Found under Apps > Monitor > Discovered apps > Export  
+    [string[]]$ReportingEndpointReportName = @(
+        'AllAppsList', # Found under Apps > All Apps
+        'AppInstallStatusAggregate', # Found under Apps > Monitor > App install status
+        'AppInvAggregate', # Found under Apps > Monitor > Discovered apps > Export
+        'AppInvRawData' # Found under Apps > Monitor > Discovered apps > Export 
+    ),
+    [string[]]$IntuneReportName = @(
+        'deviceManagement/detectedApps' # List detected apps - Requires DeviceManagementApps.Read.All, DeviceManagementManagedDevices.Read.All
+    )
 )
-
-# Native Intune console reports.
-# https://learn.microsoft.com/en-us/graph/api/intune-devices-detectedapp-list
-# Hash out the reports you do not require by adding a #' to the start of the line
-$intuneReportName = @(
-    'deviceManagement/detectedApps' # List detected apps - Requires DeviceManagementApps.Read.All, DeviceManagementManagedDevices.Read.All
-)
-
-##############################################################################################
-##############################################################################################
 
 # Load necessary assembly for List<>
 Add-Type -AssemblyName System.Collections
