@@ -3,11 +3,13 @@
 Request the most common Intune reports using the Microsoft Graph API.
 
 Created on:   2024-09-01
+Updated On:   2024-09-26
 Created by:   Ben Whitmore @PatchMyPC
 Filename:     Get-IntuneReport.ps1
 
 .Description
 This script requests the most common Intune reports using the Microsoft Graph API. It supports both application and delegated authentication flows using the Microsoft Graph SDK. 
+If checking the deviceManagement/detectedApps endpoint, we also output to file a list of detected apps and the devices they were found on.
 The reports are saved in the specified format csv foprmat be default.
 The delegated interactive authentication flow is used by default.
 
@@ -80,34 +82,34 @@ An array of native Intune report names to fetch (e.g., 'deviceManagement/detecte
 #>
 
 param (
-    [string]$SavePath = "$env:TEMP\IntuneReports",  # The path where the reports will be saved
+    [string]$SavePath = "$env:TEMP\IntuneReports", # The path where the reports will be saved
     [ValidateSet('csv', 'json')] 
-    [string]$FormatChoice = 'csv',  # Valid formats are 'csv' and 'json'
+    [string]$FormatChoice = 'csv', # Valid formats are 'csv' and 'json'
     [ValidateSet('v1.0', 'beta')] 
-    [string]$EndpointVersion = 'beta',  # Valid endpoints are 'v1.0' and 'beta'
-    [string]$TenantId = '',  # Tenant Id if using the Application auth flow
-    [string]$ClientId = '',  # App registration /client Id if using the Application auth flow
-    [string]$CertThumbprint = '',  # Certificate thumbprint if using the Application auth flow with certificate authentication
-    [string]$ClientSecret = '',  # Client Secret if using the Application auth flow with client secret
+    [string]$EndpointVersion = 'beta', # Valid endpoints are 'v1.0' and 'beta'
+    [string]$TenantId = '', # Tenant Id if using the Application auth flow
+    [string]$ClientId = '', # App registration /client Id if using the Application auth flow
+    [string]$CertThumbprint = '', # Certificate thumbprint if using the Application auth flow with certificate authentication
+    [string]$ClientSecret = '', # Client Secret if using the Application auth flow with client secret
 
     [ValidateSet('ApplicationCertificate', 'ApplicationClientSecret', 'Delegated')] 
-    [string]$AuthFlow = 'Delegated',  # Valid authentication flows are 'ApplicationCertificate', 'ApplicationClientSecret' and 'Delegated'
+    [string]$AuthFlow = 'Delegated', # Valid authentication flows are 'ApplicationCertificate', 'ApplicationClientSecret' and 'Delegated'
 
     [string[]]$ReportingEndpointReportName = @(
-        'AllAppsList', # Found under Apps > All Apps
-        'AppInstallStatusAggregate', # Found under Apps > Monitor > App install status
-        'AppInvAggregate', # Found under Apps > Monitor > Discovered apps > Export
+        #'AllAppsList', # Found under Apps > All Apps
+        #'AppInstallStatusAggregate', # Found under Apps > Monitor > App install status
+        #'AppInvAggregate', # Found under Apps > Monitor > Discovered apps > Export
         'AppInvRawData' # Found under Apps > Monitor > Discovered apps > Export 
     ),
     [string[]]$IntuneReportName = @(
-        'deviceManagement/detectedApps' # List detected apps - Requires DeviceManagementApps.Read.All, DeviceManagementManagedDevices.Read.All
+        'deviceManagement/detectedApps' # List detected apps and devices apps were found on - Requires DeviceManagementApps.Read.All, DeviceManagementManagedDevices.Read.All
     )
 )
 
 # Load necessary assembly for List<>
 Add-Type -AssemblyName System.Collections
 
-Install-Module -Name 'Microsoft.Graph.Authentication' -Scope CurrentUser -AllowClobber
+Install-Module -Name 'Microsoft.Graph.Authentication' -Scope CurrentUser -AllowClobber -ErrorAction SilentlyContinue
 Write-Host 'Connecting to Microsoft Graph...'
 
 switch ($authFlow) {
@@ -230,29 +232,43 @@ foreach ($report in $reportsToGet) {
         $reportStatus = ""
 
         # Poll the endpoint until the report is completed
-    
         $timer = [System.Diagnostics.Stopwatch]::StartNew()
+        $elapsedTimeInSeconds = 0
+
         while ($reportStatus -ne "completed") {
-            Start-Sleep -Seconds 5
+
+            # Calculate the elapsed time in seconds
             $elapsedTimeInSeconds = [math]::Floor($timer.Elapsed.TotalSeconds)
+
+            # Display the elapsed time, overwriting the same line
+            $timeTaken = [TimeSpan]::FromSeconds($elapsedTimeInSeconds)
+            $statusMessage = "Waiting for the report to become available: {0:D2}:{1:D2}:{2:D2}" -f $timeTaken.Hours, $timeTaken.Minutes, $timeTaken.Seconds
+
+            # Overwrite the same line to simulate a dynamic clock
+            Write-Host "`r$statusMessage" -NoNewline
 
             try {
                 $jobStatusResponse = Invoke-MgGraphRequest -Uri $pollingEndpoint -Method Get
             }
             catch {
-                Write-Error ("Failed to get the report status for {0}. Error: {1}" -f $report.name, $_)
+                Write-Error "Failed to get the report status for {0}. Error: {1}" -f $($report.name), $_
                 continue
             }
 
+            # Sleep for 1 second before polling again
+            Start-Sleep -Seconds 1
+
             $jobStatusResponse = Invoke-MgGraphRequest -Uri $pollingEndpoint -Method Get
             $reportStatus = $jobStatusResponse.status
-            Write-Host ("Report status for {0}: {1}. Time elapsed: {2} seconds" -f $report.name, $reportStatus, $elapsedTimeInSeconds)
         }
 
         # Once the report is completed, retrieve the download Uri
         $downloadUri = $jobStatusResponse.url
-        Write-Host 'The report is ready. Download it from:'
+        Write-Host "`nThe report is ready. Downloading it from:"
         Write-Host $downloadUri -ForegroundColor Yellow
+
+        # Stop the timer
+        $timer.Stop()
     
         # Define the path for the file to be saved
         $tempPath = [System.IO.Path]::Combine($savePath, "$jobId.zip")
@@ -274,14 +290,25 @@ foreach ($report in $reportsToGet) {
             $extractedFile = Get-ChildItem -Path $savePath | Where-Object { $_.Name -eq "$jobId.$formatChoice" }
         }
         catch {
-            Write-Error ("Failed to get the extracted file. Error: {0}" -f $_)
+            Write-Error "Failed to get the extracted file. Error: {0}" -f $_
             continue
         }
         
-        Write-Host ("Extracted file path: {0}" -f $extractedFile.FullName) -foregroundcolor Green
+        Write-Host ("Extracted file path: {0}" -f $extractedFile.FullName) -Foregroundcolor Green
+
+        try {
+
+            # Remove the zip file after extraction
+            Remove-Item -Path $tempPath -Force -ErrorAction SilentlyContinue
+
+            Write-Host ("Deleted zip file: {0}" -f $tempPath)
+        }
+        catch {
+            Write-Error "Failed to delete the zip file. Error: {0}" -f $_
+        }
     }
 
-    # Try the Intune native reports
+    # Intune native report logic
     if ($report.value -eq 'IntuneNative') {
 
         Write-Host ("Requesting the report for {0}..." -f $report.name) -ForegroundColor Cyan
@@ -292,17 +319,129 @@ foreach ($report in $reportsToGet) {
         if ($intuneReport) {
             Write-Host ("Retrieved the report {0}" -f $report.name)
 
-            try {
-
-                # Accoutn for how PowerShell 5 handles the response
-                if ($PSVersionTable.PSVersion.Major -like "5*") {
-                    $intuneReportFile = $intuneReport.Value | ForEach-Object {
-                        New-Object -TypeName PSObject -Property $_
-                    }
+            # Account for how PowerShell 5 handles the response
+            if ($PSVersionTable.PSVersion.Major -like "5*") {
+                $intuneReportFile = $intuneReport.Value | ForEach-Object {
+                    New-Object -TypeName PSObject -Property $_
                 }
+            }
 
-                $reportName = ($report.name).replace('/', '_')
+            $reportName = ($report.name).replace('/', '_')
 
+            # If the report is deviceManagement/detectedApps, do additional processing
+            if ($report.name -eq 'deviceManagement/detectedApps') {
+                $detectedApps = $intuneReportFile
+
+                if ($detectedApps.Count -eq 0) {
+                    Write-Host "No detected apps found."
+                }
+                else {
+                    Write-Host "Successfully retrieved detected apps."
+                    Write-Host "Matching detected apps with managed devices..." -ForegroundColor Cyan
+
+                    # Total number of apps to process
+                    $totalApps = $detectedApps.Count
+                    $counter = 0
+
+                    # Initialize lists for detected apps and managed devices
+                    $detectedAppsList = @()
+                    $allManagedDevices = @()
+
+                    # Loop through each detected app
+                    foreach ($app in $detectedApps) {
+                        $appId = $app.id
+                        $appName = $app.displayName
+                        $appVersion = $app.version
+                        $appPublisher = $app.publisher
+
+                        # Create a custom object for each detected app
+                        $detectedAppObject = [PSCustomObject]@{
+                            AppId        = $appId
+                            AppName      = $appName
+                            AppVersion   = $appVersion
+                            AppPublisher = $appPublisher
+                        }
+                        $detectedAppsList += $detectedAppObject
+
+                        # Show progress as a percentage
+                        $percentComplete = ($counter / $totalApps) * 100
+                        $statusMessage = "Processing $counter of $totalApps - App ID: $appId"
+                        Write-Progress -Activity "Processing Detected Apps" -Status $statusMessage -PercentComplete $percentComplete
+
+                        # Define the endpoint for fetching managed devices for the current app
+                        $managedDevicesEndpoint = "https://graph.microsoft.com/$endpointVersion/deviceManagement/detectedApps('$appId')/managedDevices"
+
+                        try {
+
+                            # Request managed devices for this app
+                            $managedDevicesResponse = Invoke-MgGraphRequest -Uri $managedDevicesEndpoint -Method Get
+                            $managedDevices = $managedDevicesResponse.value
+
+                            if ($managedDevices) {
+
+                                # Add relevant information to each managed device for traceability
+                                foreach ($device in $managedDevices) {
+                                    $customDeviceObject = [PSCustomObject]@{
+                                        DeviceName   = $device.deviceName
+                                        AppName      = $appName
+                                        AppId        = $appId
+                                        AppVersion   = $appVersion
+                                        AppPublisher = $appPublisher
+                                    }
+
+                                    # Append to the combined managed device list
+                                    $allManagedDevices += $customDeviceObject
+                                }
+                            }
+                            else {
+
+                                # If no managed devices found, add a placeholder entry for the app
+                                $customDeviceObject = [PSCustomObject]@{
+                                    DeviceName   = "No Devices Found"
+                                    AppName      = $appName
+                                    AppId        = $appId
+                                    AppVersion   = $appVersion
+                                    AppPublisher = $appPublisher
+                                }
+
+                                # Append the placeholder to the managed device list
+                                $allManagedDevices += $customDeviceObject
+                            }
+                        }
+                        catch {
+                            Write-Error "Failed to retrieve managed devices for app ID {0}. Error: {1}" -f $appId, $_
+                        }
+
+                        # Increment the counter for the next app
+                        $counter++
+                    }
+
+                    # Clear the progress bar when done
+                    Write-Progress -Activity "Processing Detected Apps" -Status "Completed" -Completed
+
+                    # Output both detected apps and managed devices based on the FormatChoice parameter
+                    $outputPaths = @{
+                        DetectedAppsPath   = "$savePath\detectedApps.$formatChoice"
+                        ManagedDevicesPath = "$savePath\managedDevices_detectedApps.$formatChoice"
+                    }
+
+                    switch ($formatChoice) {
+                        'json' {
+                            $detectedAppsList | ConvertTo-Json -Depth 10 | Out-File -FilePath $outputPaths.DetectedAppsPath
+                            $allManagedDevices | ConvertTo-Json -Depth 10 | Out-File -FilePath $outputPaths.ManagedDevicesPath
+                        }
+                        'csv' {
+                            $detectedAppsList | Export-Csv -Path $outputPaths.DetectedAppsPath -NoTypeInformation
+                            $allManagedDevices | Export-Csv -Path $outputPaths.ManagedDevicesPath -NoTypeInformation
+                        }
+                    }
+
+                    Write-Host ("Exported detected apps to {0}" -f $outputPaths.DetectedAppsPath) -ForegroundColor Green
+                    Write-Host ("Exported managed devices to {0}" -f $outputPaths.ManagedDevicesPath) -ForegroundColor Green
+                }
+            }
+            else {
+                # Process the other Intune reports as usual
                 switch ($formatChoice) {
                     'json' {
                         $intuneReportFile | ConvertTo-Json -Depth 10 | Out-File -FilePath "$savePath\$reportName.json"
@@ -313,10 +452,6 @@ foreach ($report in $reportsToGet) {
                         Write-Host ("Exported the report {0} to {1}" -f $reportName, "$savePath\$reportName.$formatChoice") -ForegroundColor Green
                     }
                 }
-            }
-            catch {
-                Write-Error ("Failed to export the report {0}. Error: {1}" -f $report.name, $_)
-                continue
             }
         }
         else {
