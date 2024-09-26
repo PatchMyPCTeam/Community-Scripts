@@ -96,9 +96,9 @@ param (
     [string]$AuthFlow = 'Delegated', # Valid authentication flows are 'ApplicationCertificate', 'ApplicationClientSecret' and 'Delegated'
 
     [string[]]$ReportingEndpointReportName = @(
-        #'AllAppsList', # Found under Apps > All Apps
-        #'AppInstallStatusAggregate', # Found under Apps > Monitor > App install status
-        #'AppInvAggregate', # Found under Apps > Monitor > Discovered apps > Export
+        'AllAppsList', # Found under Apps > All Apps
+        'AppInstallStatusAggregate', # Found under Apps > Monitor > App install status
+        'AppInvAggregate', # Found under Apps > Monitor > Discovered apps > Export
         'AppInvRawData' # Found under Apps > Monitor > Discovered apps > Export 
     ),
     [string[]]$IntuneReportName = @(
