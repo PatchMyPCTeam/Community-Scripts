@@ -104,6 +104,8 @@
     This is useful for some software which spawn a seperate process to do the uninstallation, and the main process exits before the uninstallation is finished.
 
     The .exe extension is not required, and the process name is case-insensitive.
+.PARAMETER RemovePath
+    Supply a list of files and folders to be removed after the uninstallations have been processed. Use with -Force if all items are to be removed even if there is no software found to be uninstalled.
 .EXAMPLE
     PS C:\> Uninstall-Software.ps1 -DisplayName "Greenshot"
     
@@ -185,7 +187,10 @@ param (
     [Switch]$Force,
 
     [Parameter()]
-    [String]$ProcessName
+    [String]$ProcessName,
+
+    [Parameter()]
+    [String[]]$RemovePath
 )
 
 function Get-InstalledSoftware {
@@ -376,7 +381,6 @@ function Split-UninstallString {
     return $FilePath, $Arguments
 }
 
-
 function Get-ProductState {
     param(
         [Parameter(Mandatory)]
@@ -391,7 +395,6 @@ function Get-ProductState {
 
     return $ProductState
 }
-
 
 function Uninstall-Software {
     # Specifically written to take an input object made by Get-InstalledSoftware in this same script file
@@ -556,6 +559,31 @@ function Uninstall-Software {
     }
 }
 
+function Remove-Paths {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true, Position = 0, ValueFromPipeline = $true)]
+        [string[]]$Path
+    )
+
+    process {
+        foreach ($eachPath in $Path) {
+            if (Test-Path $eachPath) {
+                Write-Verbose "Removing $eachPath"
+                try {
+                    Remove-Item -Path $eachPath -Recurse -Force
+                }
+                catch {
+                    Write-Warning "Failed to remove $eachPath`: $_"
+                }
+            }
+            else {
+                Write-Verbose "Path $eachPath does not exist"
+            }
+        }
+    }
+}
+
 $log = '{0}\Uninstall-Software-{1}.log' -f $env:temp, $DisplayName.Replace(' ', '_').Replace('*', '')
 $null = Start-Transcript -Path $log -Append -NoClobber -Force
 
@@ -608,19 +636,34 @@ switch ($PSBoundParameters.Keys) {
 
 if ($InstalledSoftware.Count -eq 0) {
     Write-Verbose ('Software "{0}" not installed or version does not match criteria' -f $DisplayName)
+    if ($RemovePath -and $Force) {
+        Write-Verbose 'Force removing path(s) even though no software was found to uninstall.'
+        Remove-Paths -Path $RemovePath
+    }
 }
-elseif ($InstalledSoftware.Count -gt 1) {
-    if ($UninstallAll.IsPresent) {
-        foreach ($Software in $InstalledSoftware) {
-            Uninstall-Software -Software $Software @UninstallSoftwareSplat
-        }
-    }
-    else {
-        Write-Verbose ('Found more than one instance of software "{0}". Quitting because not sure which UninstallString to execute. Consider using -UninstallAll switch if necessary.' -f $DisplayName)
-    }
+elseif ($InstalledSoftware.Count -gt 1 -and !$UninstallAll) {
+    Write-Verbose ('Found more than one instance of software "{0}". Quitting because not sure which UninstallString to execute. Consider using -UninstallAll switch if necessary.' -f $DisplayName)
 }
 else {
-    Uninstall-Software -Software $InstalledSoftware[0] @UninstallSoftwareSplat
+    if ($InstalledSoftware.Count -gt 1) {
+        Write-Verbose ('Found more than one instance of software "{0}". Uninstalling all instances.' -f $DisplayName)
+    }
+    $errorCount = 0
+    foreach ($Software in $InstalledSoftware) {
+        Uninstall-Software -Software $Software @UninstallSoftwareSplat -ErrorVariable 'UninstallError'
+        $errorCount += $UninstallError.Count
+    }
+    if ($RemovePath) {
+        if ($errorCount -gt 0 -and !$Force) {
+            Write-Verbose ('Not removing path(s) ({0}) as errors were encountered during uninstall.' -f ($RemovePath -join ','))
+        }
+        else {
+            if ($errorCount -gt 0) {
+                Write-Verbose 'Force removing path(s) even though errors were encountered during uninstall.'
+            }
+            Remove-Paths -Path $RemovePath
+        }
+    }
 }
 
 $null = Stop-Transcript
