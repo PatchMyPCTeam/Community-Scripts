@@ -105,7 +105,7 @@
 
     The .exe extension is not required, and the process name is case-insensitive.
 .PARAMETER RemovePath
-    Supply a list of files and folders to be removed after the uninstallations have been processed. Use with -Force if all items are to be removed even if there is no software found to be uninstalled.
+    Supply a list of files and folders to be removed after the uninstallations have been processed. Use with -Force if all items are to be removed even if there is no software found to be uninstalled or if errors are encountered during uninstallation.
 .EXAMPLE
     PS C:\> Uninstall-Software.ps1 -DisplayName "Greenshot"
     
