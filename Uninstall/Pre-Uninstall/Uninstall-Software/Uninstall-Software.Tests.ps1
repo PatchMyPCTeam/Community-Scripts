@@ -273,6 +273,47 @@ Describe 'Uninstall-Software.ps1' {
 
         .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -Architecture 'x64' -HivesToSearch 'HKLM' -WindowsInstaller 1 -Force | Should -Be 0
     }
+
+    Context 'RemovePath parameter tests' {
+        BeforeEach {
+            New-Item -Path "$TestDrive\TestFolder" -ItemType Directory -Force | Out-Null
+            New-Item -Path "$TestDrive\TestFile" -ItemType File -Force | Out-Null
+        }
+
+        it 'removes specified paths after uninstall' {
+            .\Uninstall-Software.ps1 -DisplayName '7-Zip 22.01 (x64)' -RemovePath "$TestDrive\TestFolder", "$TestDrive\TestFile"
+            "$TestDrive\TestFolder" | Should -Not -Exist
+            "$TestDrive\TestFile" | Should -Not -Exist
+        }
+    
+        it 'skips path removal if multiple apps found to uninstall and -UninstallAll is not used' {
+            .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -RemovePath "$TestDrive\TestFile"
+            "$TestDrive\TestFile" | Should -Exist
+        }
+    
+        it 'skips path removal if no apps found to uninstall' {
+            .\Uninstall-Software.ps1 -DisplayName 'DoesNotExist' -RemovePath "$TestDrive\TestFile"
+            "$TestDrive\TestFile" | Should -Exist
+        }
+    
+        it 'removes specified paths if no apps found to uninstall and -Force is used' {
+            .\Uninstall-Software.ps1 -DisplayName 'DoesNotExist' -RemovePath "$TestDrive\TestFile" -Force
+            "$TestDrive\TestFile" | Should -Not -Exist
+        }
+    
+        it 'skips path removal if uninstall errors encountered' {
+            Mock Start-Process { Write-Error 'This is a fake uninstall error!' }
+            .\Uninstall-Software.ps1 -DisplayName '7-Zip 22.01 (x64)' -RemovePath "$TestDrive\TestFile"
+            "$TestDrive\TestFile" | Should -Exist
+        }
+    
+        it 'removes specified paths if uninstall errors encountered and -Force is used' {
+            Mock Start-Process { Write-Error 'This is a fake uninstall error!' }
+            .\Uninstall-Software.ps1 -DisplayName '7-Zip 22.01 (x64)' -RemovePath "$TestDrive\TestFile" -Force
+            "$TestDrive\TestFile" | Should -Not -Exist
+        }
+    }
+
 }
 
 AfterAll {
