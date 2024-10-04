@@ -668,7 +668,7 @@ foreach ($vendor in $xmlContent.SupportedProducts.Vendor) {
 }
 
 # Output the number of supported products
-$supportedProductCount = $supportedProductsHash.Values | Measure-Object | Select-Object -ExpandProperty Count
+$supportedProductCount = $supportedProductsHash.Values.Name | Measure-Object | Select-Object -ExpandProperty Count
 Write-Host ("Extracted {0} supported products from XML" -f $supportedProductCount) -ForegroundColor Cyan
 
 # Step 4: Matching applications with progress tracking outside the function
