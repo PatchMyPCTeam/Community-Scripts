@@ -603,7 +603,6 @@ if (-not $reuseExistingData) {
 else {
 
     # Reuse the existing app inventory data logic remains the same
-    Write-Host ("Reusing existing inventory data from '{0}'." -f $existingDataFile.FullName) -ForegroundColor Green
     switch ($FormatChoice) {
         'csv' {
             $appReportData = Import-Csv -Path $existingDataFile.FullName
