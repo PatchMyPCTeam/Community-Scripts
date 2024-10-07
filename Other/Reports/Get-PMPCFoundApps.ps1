@@ -3,6 +3,7 @@
 This script downloads application inventory data from Microsoft Graph, matches it against a list of supported products from Patch My PC, and outputs the results in specified formats (CSV or JSON).
 
 Created on:   2024-10-04
+Updated On:   2024-10-06
 Created by:   Ben Whitmore @PatchMyPC
 Filename:     Get-PMPCFoundApps.ps1
 
@@ -11,20 +12,26 @@ Filename:     Get-PMPCFoundApps.ps1
 The script performs the following tasks:
 1. Defines parameters for saving paths, authentication, and format choices.
 2. Downloads and parses the Patch My PC Supported Products XML.
-3. Connects to Microsoft Graph and requests application inventory reports.
+3. Connects to Microsoft Graph and requests application inventory reports and/or a managed device count.
 4. Matches applications against supported products based on specified inclusion and exclusion patterns.
 5. Outputs matched and unmatched application results to specified file formats.
 6. Calculates the ROI based on matched applications and device counts.
 
+Requires the following modules:
+- Microsoft.Graph.Authentication
+
+Requires the following permissions:
+- DeviceManagementApps.Read.All, DeviceManagementManagedDevices.Read.All
+
 ---------------------------------------------------------------------------------
 LEGAL DISCLAIMER
 
-The PowerShell script provided is shared with the community as-is
-The author and co-author(s) make no warranties or guarantees regarding its functionality, reliability, or suitability for any specific purpose
-Please note that the script may need to be modified or adapted to fit your specific environment or requirements
-It is recommended to thoroughly test the script in a non-production environment before using it in a live or critical system
-The author and co-author(s) cannot be held responsible for any damages, losses, or adverse effects that may arise from the use of this script
-You assume all risks and responsibilities associated with its usage
+The PowerShell script provided is shared with the community as-is.
+The author and co-author(s) make no warranties or guarantees regarding its functionality, reliability, or suitability for any specific purpose.
+Please note that the script may need to be modified or adapted to fit your specific environment or requirements.
+It is recommended to thoroughly test the script in a non-production environment before using it in a live or critical system.
+The author and co-author(s) cannot be held responsible for any damages, losses, or adverse effects that may arise from the use of this script.
+You assume all risks and responsibilities associated with its usage.
 ---------------------------------------------------------------------------------
 
 .PARAMETER SavePath
@@ -35,6 +42,9 @@ The format for output files, either 'csv' or 'json'. Default is 'csv'.
 
 .PARAMETER EndpointVersion
 The version of the Microsoft Graph API to use, either 'v1.0' or 'beta'. Default is 'beta'.
+
+.PARAMETER GraphScopes
+The Microsoft Graph scopes required for the script to run when using the delegated authentication flow. Default is "DeviceManagementApps.Read.All, DeviceManagementManagedDevices.Read.All".
 
 .PARAMETER TenantId
 The Tenant ID for the Azure AD tenant.
@@ -52,12 +62,37 @@ The client secret for the Azure AD application.
 The authentication flow to use, either 'ApplicationCertificate', 'ApplicationClientSecret', or 'Delegated'. Default is 'Delegated'.
 
 .PARAMETER ReportingEndpointReportName
-The name of the report to request from Microsoft Graph. Default is 'AppInvRawData'.
+The name of the report to request from Microsoft Graph. Accepts 'AppInvRawData' or 'AppInvAggregate'. Default is 'AppInvAggregate'.
+
+.PARAMETER AppInvRawData_Filter
+The filter to apply when requesting the AppInvRawData report. Default is "Platform eq 'Windows'".
+
+.PARAMETER AppInvRawData_SelectedProperties
+An array of selected properties to include in the AppInvRawData report. Defaults to:
+- ApplicationKey
+- ApplicationName
+- ApplicationVersion
+- DeviceName
+- OSVersion
+- Platform
+- EmailAddress
+
+.PARAMETER AppInvAggregate_SelectedProperties
+An array of selected properties to include in the AppInvAggregate report. Defaults to:
+- ApplicationKey
+- ApplicationName
+- ApplicationPublisher
+- ApplicationVersion
+- DeviceCount
+- Platform
+
+.PARAMETER AppNameExclusions
+An array of application name patterns to exclude from the matching process. Default includes common Microsoft applications.
 
 .PARAMETER XmlUrl
 The URL for the Patch My PC Supported Products XML file. Default is set to the official URL.
 
-.PARAMETER UseExistingAppInvData
+.PARAMETER UseExistingAppReportData
 A switch to indicate whether to reuse existing application inventory data generated today. Default is $false.
 
 .PARAMETER ROI_AverageAppsPerYear
@@ -67,7 +102,7 @@ The average number of updates per application per year, used in ROI calculation.
 The average number of hours spent per application for packaging, testing, etc. Default is 4 hours.
 
 .PARAMETER ROI_AverageCostPerHour
-The average cost per hour of time spent on packaging or testing applications. Default is 30 USD.
+The average cost per hour of time spent on packaging or testing applications. Default is 100 USD.
 
 .PARAMETER ROI_Currency
 The currency used for the ROI calculation. Default is "USD".
@@ -91,14 +126,14 @@ The initial quote amount for the second SKU. Default is 2499.
 The quote per device for the second SKU. Default is 3.5.
 
 .EXAMPLE
-.\Get-PMPCFoundApps.ps1 -SavePath "C:\Reports" -FormatChoice "csv" -TenantId "your-tenant-id" -ClientId "your-client-id" -CertThumbprint "your-cert-thumbprint" -AuthFlow "ApplicationCertificate"
-
-This command runs the script, saving the output as a CSV file in "C:\Reports" using the specified tenant ID, client ID, and certificate thumbprint for authentication.
-
-.EXAMPLE
 .\Get-PMPCFoundApps.ps1
 
-This command runs the script using the current user's TEMP directory for saving output $env:TEMP\IntuneReports, requesting the results in csv format and using the delegated authentication flow.
+This command runs the script using the current user's TEMP directory for saving output $env:TEMP\IntuneReports, requesting the results in CSV format and using the delegated authentication flow.
+
+.EXAMPLE
+.\Get-PMPCFoundApps.ps1 -SavePath "C:\Reports" -FormatChoice "json" -TenantId "your-tenant-id" -ClientId "your-client-id" -CertThumbprint "your-cert-thumbprint" -AuthFlow "ApplicationCertificate"
+
+This command runs the script, saving the output as a JSON file in "C:\Reports" using the specified tenant ID, client ID, and certificate thumbprint for authentication.
 
 #>
 [CmdletBinding()]
@@ -108,6 +143,7 @@ param (
     [string]$FormatChoice = 'csv',
     [ValidateSet('v1.0', 'beta')] 
     [string]$EndpointVersion = 'beta',
+    [string]$GraphScopes = "DeviceManagementApps.Read.All, DeviceManagementManagedDevices.Read.All",
     [string]$TenantId = '',
     [string]$ClientId = '',
     [string]$CertThumbprint = '',
@@ -115,7 +151,33 @@ param (
     [ValidateSet('ApplicationCertificate', 'ApplicationClientSecret', 'Delegated')] 
     [string]$AuthFlow = 'Delegated',
     [ValidateSet('AppInvRawData', 'AppInvAggregate')]
-    [string]$ReportingEndpointReportName = 'AppInvRawData',
+    [string]$ReportingEndpointReportName = 'AppInvAggregate',
+    [string]$AppInvRawData_Filter = "Platform eq 'Windows'", # MS Document suggests filters are not supported for AppInvRawData but it works!
+    [string[]]$AppInvRawData_SelectedProperties = @(
+        "ApplicationKey",
+        "ApplicationName",
+        "ApplicationVersion",
+        "DeviceName",
+        "OSVersion",
+        "Platform",
+        "EmailAddress"
+    ),
+    [string[]]$AppInvAggregate_SelectedProperties = @(
+        "ApplicationKey",
+        "ApplicationName",
+        "ApplicationPublisher",
+        "ApplicationVersion",
+        "DeviceCount",
+        "Platform"
+    ),
+    [string[]]$AppNameExclusions = @(
+        "Microsoft.*", 
+        "MicrosoftWindows.*", 
+        "Clipchamp.*", 
+        "Microsoft Intune Management Extension",
+        "Patch My PC Publishing Service", 
+        "Microsoft Configuration Manager Console"
+        ),
     [ValidatePattern('^https://.*')]
     [string]$XmlUrl = "https://api.patchmypc.com/downloads/xml/supportedproducts.xml",
     [switch]$UseExistingAppReportData = $false,
@@ -140,6 +202,7 @@ param (
     [ValidateRange(0.01, 100)]
     [double]$ROI_Quote2_Device = 3.5
 )
+
 
 $VerbosePreference = "SilentlyContinue"
 
@@ -168,14 +231,18 @@ Function Request-Report {
     param (
         [string]$reportEndpoint,
         [string]$reportName,
-        [string]$formatChoice
+        [string]$formatChoice,
+        [string]$filter,
+        [string[]]$selectedProperties
     )
 
     $body = @{
-        reportName = $reportName
-        filter     = ""
-        format     = $formatChoice
-    } | ConvertTo-Json
+        reportName       = $reportName
+        localizationType = "ReplaceLocalizableValues"
+        filter           = $filter
+        format           = $formatChoice
+        select           = $selectedProperties
+    } | ConvertTo-Json -Depth 3
 
     try {
         Write-Host ("Requesting the report for {0}..." -f $reportName) -ForegroundColor Cyan
@@ -216,6 +283,32 @@ Function Request-Report {
     return $jobStatusResponse.url
 }
 
+function Get-IntuneDeviceCount {
+
+    try {
+
+        # Define the API endpoint for managed devices with filter for Windows devices
+        $filter = "operatingSystem eq 'Windows'"
+        $uri = "https://graph.microsoft.com/$($EndpointVersion)/deviceManagement/managedDevices?`$filter=$filter&`$count=true"
+
+        # Make the request using Invoke-MgGraphRequest
+        Write-Host "Retrieving the number of Windows devices enrolled in Intune as this report does not contain device information..." -ForegroundColor Cyan
+        $response = Invoke-MgGraphRequest -Method Get -Uri $uri
+
+        # Extract the count from the response
+        $windowsDeviceCount = $response.'@odata.count'
+
+        # Output the count
+        Write-Host "Number of Intune enrolled Windows devices: $windowsDeviceCount" -ForegroundColor Green
+
+        return $windowsDeviceCount
+
+    }
+    catch {
+        return $null
+    }
+}
+
 # Function to clean up files
 Function Remove-ZipFile {
     param (
@@ -224,18 +317,18 @@ Function Remove-ZipFile {
 
     # Clean up by deleting the zip file after extraction
     try {
-        Remove-Item -Path $ZipFilePath -Force
+        Remove-Item -Path $ZipFilePath -Force -ErrorAction Stop
         Write-Host ("Deleted zip file: {0}" -f $ZipFilePath) -ForegroundColor Green
     }
     catch {
-        Write-Error ("Failed to delete the zip file. Error: {0}" -f $_)
+        Write-Error ("Failed to delete the zip file. Error: {0}" -f $_.Exception.Message)
     }
 }
 
 # Function to match applications with supported products and count incidents per product
 Function Find-Applications {
     param (
-        [array]$ApplicationData, # Changed parameter name for generality
+        [array]$ApplicationData,
         [hashtable]$supportedProductsHash
     )
 
@@ -250,44 +343,63 @@ Function Find-Applications {
 
         # Increment the current app index
         $currentAppIndex++
-
+    
         $appName = $app.ApplicationName
-        $deviceName = if ($app.PSObject.Properties['DeviceName']) { $app.DeviceName } else { $null }
+        $appVersion = $app.ApplicationVersion
         $isMatched = $false
-
+    
         foreach ($pattern in $supportedProductsHash.Keys) {
             foreach ($product in $supportedProductsHash[$pattern]) {
                 $sqlSearchIncludePattern = $product.SQLSearchIncludePattern
                 $sqlSearchExcludePattern = $product.SQLSearchExcludePattern
+                $excludePattern = $product.ExcludePattern
+                $sqlSearchVersionIncludePattern = $product.SQLSearchVersionIncludePattern
 
+                # Check if include pattern is null or empty
                 if ([string]::IsNullOrWhiteSpace($sqlSearchIncludePattern)) {
                     continue
                 }
 
-                # Test the app name against the SQLSearchInclude and SQLSearchExclude patterns
+                # Check include pattern
                 $likeIncludePattern = $sqlSearchIncludePattern -replace '\*', '*' -replace '\%', '*'
-                $sqlSearchIncludeMatch = $appName -like $likeIncludePattern
+                if ($appName -like $likeIncludePattern) {
 
-                if (-not [string]::IsNullOrWhiteSpace($sqlSearchExcludePattern)) {
-                    $likeExcludePattern = $sqlSearchExcludePattern -replace '\*', '*' -replace '\%', '*'
-                    $sqlSearchExcludeMatch = $appName -like $likeExcludePattern
-                    if ($sqlSearchExcludeMatch) {
-                        continue
+                    # Check exclusion patterns
+                    $sqlSearchExcludeMatch = -not [string]::IsNullOrWhiteSpace($sqlSearchExcludePattern) -and ($appName -like ($sqlSearchExcludePattern -replace '\*', '*' -replace '\%', '*'))
+                    $excludeMatch = -not [string]::IsNullOrWhiteSpace($excludePattern) -and ($appName -like ($excludePattern -replace '\*', '*' -replace '\%', '*'))
+
+                    # If the application name matches and is not excluded
+                    if (-not ($sqlSearchExcludeMatch -or $excludeMatch)) {
+
+                        # Track individual matches for CSV/JSON
+                        $matchedOnNamePattern = $sqlSearchIncludePattern
+                        $matchedOnVersionPattern = $null
+
+                        # Check SQLSearchVersionInclude only if it exists and after confirming name match
+                        if (-not [string]::IsNullOrWhiteSpace($sqlSearchVersionIncludePattern)) {
+
+                            # Replace wildcards in the version pattern
+                            $likeVersionPattern = $sqlSearchVersionIncludePattern -replace '\*', '*' -replace '\%', '*'
+                            
+                            # Perform version comparison
+                            if ($appVersion -like $likeVersionPattern) {
+                                $matchedOnVersionPattern = $sqlSearchVersionIncludePattern
+                            }
+                        }
+
+                        $matchedAppDetail = [pscustomobject]@{
+                            DeviceName           = if ($app.PSObject.Properties['DeviceName']) { $app.DeviceName } else { $null }
+                            MatchedAppInvName    = $appName
+                            MatchedAppInvVersion = $appVersion
+                            MatchedPMPCProduct   = $product.Name
+                            MatchedPMPCProductId = $product.Id
+                            MatchedOnName        = $matchedOnNamePattern
+                            MatchedOnVersion     = $matchedOnVersionPattern
+                        }
+
+                        $detailedMatchedApplications += $matchedAppDetail
+                        $isMatched = $true
                     }
-                }
-
-                if ($sqlSearchIncludeMatch) {
-
-                    # Track all individual matches for CSV/JSON, keeping MatchedAppName
-                    $matchedAppDetail = [pscustomobject]@{
-                        DeviceName           = $deviceName
-                        MatchedAppInvName    = $appName
-                        MatchedPMPCProduct   = $product.Name
-                        MatchedPMPCProductId = $product.Id
-                    }
-                    
-                    $detailedMatchedApplications += $matchedAppDetail
-                    $isMatched = $true
                 }
             }
         }
@@ -295,23 +407,24 @@ Function Find-Applications {
         # If no match is found, add the app to unmatched list
         if (-not $isMatched) {
             $unmatchedAppDetail = [pscustomobject]@{
-                DeviceName       = $deviceName
-                UnmatchedAppName = $appName
+                DeviceName             = if ($app.PSObject.Properties['DeviceName']) { $app.DeviceName } else { $null }
+                UnmatchedAppInvName    = $appName
+                UnmatchedAppInvVersion = $appVersion
             }
             $unmatchedApps += $unmatchedAppDetail
         }
 
         # Calculate and display progress
         $progressPercent = [math]::Round(($currentAppIndex / $totalApps) * 100)
-
         Write-Host -NoNewLine ("Progress: {0}% (Processing app {1} of {2})" -f $progressPercent, $currentAppIndex, $totalApps) "`r" -ForegroundColor Yellow
         [Console]::Out.Flush()
     }
-
+    
     Write-Host ("`r`nProcessing complete. Found {0} matched applications in {1}." -f $detailedMatchedApplications.Count, $ReportingEndpointReportName) -ForegroundColor Green
-
+    
     return $detailedMatchedApplications, $unmatchedApps
 }
+
 # Function to calculate ROI based on matched applications
 Function Measure-ROI {
     param (
@@ -395,12 +508,24 @@ Function Measure-ROI {
     return $result
 }
 
+# Initialize the filter variable based on the ReportingEndpointReportName
+switch ($ReportingEndpointReportName) {
+    'AppInvRawData' {
+        $filter = $AppInvRawData_Filter
+        $selectedProperties = $AppInvRawData_SelectedProperties
+    }
+    'AppInvAggregate' {
+        $filter = $null
+        $selectedProperties = $AppInvAggregate_SelectedProperties
+    }
+}
+
 # Test if the SavePath exists and create it if it doesn't
 if (-not (Test-Path -Path $SavePath)) {
     try {
         # Attempt to create the directory
         New-Item -ItemType Directory -Path $SavePath -ErrorAction Stop
-        Write-Host ("Directory '{0}' created successfully." -f $SavePath) -ForegroundColor Green
+        Write-Host ("Reports directory '{0}' created successfully." -f $SavePath) -ForegroundColor Green
     }
     catch {
         Write-Error ("Failed to create directory '{0}'. Error: {1}" -f $SavePath, $_)
@@ -453,9 +578,12 @@ if ($reuseExistingData) {
         }
     } 
 }
-else {
+
+# Do we need to connect to Graph to get any data?
+if (-not $reuseExistingData -or ($reuseExistingData -and $ReportingEndpointReportName -eq 'AppInvAggregate')) {
+
     # Prepare the report request and endpoint and connect to Graph
-    Write-Host "Requesting report and connecting to Graph..." -ForegroundColor Cyan
+    Write-Host "Connecting to Graph..." -ForegroundColor Cyan
     
     $moduleName = 'Microsoft.Graph.Authentication'
     $module = Get-Module -ListAvailable -Name $moduleName
@@ -531,7 +659,7 @@ else {
         'Delegated' {
             Write-Host 'Using delegated authentication flow...'
             try {
-                Connect-MgGraph -Scopes "DeviceManagementApps.Read.All, DeviceManagementManagedDevices.Read.All"
+                Connect-MgGraph -Scopes $GraphScopes -ErrorAction Stop
             }
             catch {
                 Write-Error ("Failed to connect to Microsoft Graph. Error: {0}" -f $_)
@@ -545,30 +673,32 @@ else {
             exit
         }
     }
+    if (-not $reuseExistingData) {
 
-    $reportEndpoint = "https://graph.microsoft.com/$($EndpointVersion)/deviceManagement/reports/exportJobs"
-    $downloadUri = Request-Report -reportEndpoint $reportEndpoint -reportName $ReportingEndpointReportName -formatChoice $FormatChoice
+        $reportEndpoint = "https://graph.microsoft.com/$($EndpointVersion)/deviceManagement/reports/exportJobs"
+        $downloadUri = Request-Report -reportEndpoint $reportEndpoint -reportName $ReportingEndpointReportName -formatChoice $FormatChoice -filter $filter -selectedProperties $selectedProperties
 
-    # Define the path for the zip file to be saved
-    Write-Host "Downloading the report zip file..." -ForegroundColor Cyan
-    $tempPath = [System.IO.Path]::Combine($SavePath, "$([guid]::NewGuid()).zip")
+        # Define the path for the zip file to be saved
+        Write-Host "Downloading the report zip file..." -ForegroundColor Cyan
+        $tempPath = [System.IO.Path]::Combine($SavePath, "$([guid]::NewGuid()).zip")
 
-    try {
-        Invoke-WebRequest -Uri $downloadUri -OutFile $tempPath
-    }
-    catch {
-        Write-Error ("Failed to download the report {0}. Error: {1}" -f $ReportingEndpointReportName, $_)
-        exit
-    }
+        try {
+            Invoke-WebRequest -Uri $downloadUri -OutFile $tempPath
+        }
+        catch {
+            Write-Error ("Failed to download the report {0}. Error: {1}" -f $ReportingEndpointReportName, $_)
+            exit
+        }
 
-    # Extract the zip file contents
-    Write-Host "Extracting the zip file..." -ForegroundColor Cyan
-    try {
-        Expand-Archive -Path $tempPath -DestinationPath $SavePath -Force
-    }
-    catch {
-        Write-Error ("Failed to extract the zip file {0}. Error: {1}" -f $tempPath, $_)
-        exit
+        # Extract the zip file contents
+        Write-Host "Extracting the zip file..." -ForegroundColor Cyan
+        try {
+            Expand-Archive -Path $tempPath -DestinationPath $SavePath -Force
+        }
+        catch {
+            Write-Error ("Failed to extract the zip file {0}. Error: {1}" -f $tempPath, $_)
+            exit
+        }
     }
 }
 
@@ -588,12 +718,26 @@ if (-not $reuseExistingData) {
 
     switch ($FormatChoice) {
         'csv' {
-            $appReportData = Import-Csv -Path $newestFile.FullName
-            Write-Host ("Imported {0} applications from CSV" -f $appReportData.Count) -ForegroundColor Yellow
+            try {
+                $appReportData = Import-Csv -Path $newestFile.FullName
+                Start-Sleep -Seconds 3
+                Write-Host ("Imported {0} applications from CSV" -f $appReportData.Count) -ForegroundColor Yellow
+            }
+            catch {
+                Write-Error ("Failed to import the CSV file. Error: {0}" -f $_)
+                exit
+            }
         }
         'json' {
-            $appReportData = Get-Content -Path $newestFile.FullName | ConvertFrom-Json
-            Write-Host ("Imported {0} applications from JSON" -f $appReportData.Count) -ForegroundColor Yellow
+            try {
+                $appReportData = Get-Content -Path $newestFile.FullName | ConvertFrom-Json
+                Start-Sleep -Seconds 3
+                Write-Host ("Imported {0} applications from JSON" -f $appReportData.Count) -ForegroundColor Yellow
+            }
+            catch {
+                Write-Error ("Failed to import the JSON file. Error: {0}" -f $_)
+                exit
+            }
         }
     }
 
@@ -603,15 +747,35 @@ if (-not $reuseExistingData) {
 else {
 
     # Reuse the existing app inventory data logic remains the same
-    Write-Host ("Reusing existing inventory data from '{0}'." -f $existingDataFile.FullName) -ForegroundColor Green
     switch ($FormatChoice) {
         'csv' {
-            $appReportData = Import-Csv -Path $existingDataFile.FullName
+            try {
+                Write-Host "Importing existing CSV file into variable..." -ForegroundColor Cyan
+                $appReportData = Import-Csv -Path $existingDataFile.FullName
+            }
+            catch {
+                Write-Error ("Failed to import the CSV file. Error: {0}" -f $_)
+                exit
+            }
         }
         'json' {
-            $appReportData = (Get-Content -Path $existingDataFile.FullName | ConvertFrom-Json).values
+            try {
+                Write-Host "Importing existing JSON file into variable..." -ForegroundColor Cyan
+                $appReportData = (Get-Content -Path $existingDataFile.FullName | ConvertFrom-Json).values
+            }
+            catch {
+                Write-Error ("Failed to import the JSON file. Error: {0}" -f $_)
+                exit
+            }
         }
     } 
+}
+
+# Get the Intune device count if the report is AppInvAggregate
+if ($ReportingEndpointReportName -eq 'AppInvAggregate') {
+
+    # Call the function to get the Intune Windows device count
+    $deviceCount = Get-IntuneDeviceCount
 }
 
 # Step 2: Get XML content (download)
@@ -637,16 +801,37 @@ foreach ($vendor in $xmlContent.SupportedProducts.Vendor) {
 
         # Create a custom object for each product
         $productObject = [PSCustomObject]@{
-            Name                    = $product.Name
-            Id                      = $product.Id
-            SQLSearchIncludePattern = if ($product.SQLSearchInclude) { 
+            Name                           = $product.Name
+            Id                             = $product.Id
+            
+            # Store include patterns
+            SQLSearchIncludePattern        = if ($product.SQLSearchInclude) { 
                 $product.SQLSearchInclude.Replace('%', '*').Replace('_', '?') 
             }
             else { 
                 $null 
             }
-            SQLSearchExcludePattern = if ($product.SQLSearchExclude) { 
+            
+            # Store exclude patterns
+            SQLSearchExcludePattern        = if ($product.SQLSearchExclude) { 
                 $product.SQLSearchExclude.Replace('%', '*').Replace('_', '?')
+            }
+            else { 
+                $null 
+            }
+
+            # Store version include pattern for later checks
+            SQLSearchVersionIncludePattern = if ($product.SQLSearchVersionInclude) { 
+                $product.SQLSearchVersionInclude.Replace('%', '*').Replace('_', '?') 
+                
+            }
+            else { 
+                $null 
+            }
+
+            # Store exclude node pattern for later checks
+            ExcludePattern                 = if ($product.Exclude) { 
+                $product.Exclude.Replace('%', '*').Replace('_', '?')
             }
             else { 
                 $null 
@@ -662,13 +847,13 @@ foreach ($vendor in $xmlContent.SupportedProducts.Vendor) {
             $supportedProductsHash[$includePattern] += $productObject
         }
         else {
-            Write-Host ("    Skipping product '{0}' due to empty SQLSearchInclude." -f $product.Name) -ForegroundColor Yellow
+            # Write-Host ("    Skipping product '{0}' due to empty SQLSearchInclude." -f $product.Name) -ForegroundColor Yellow
         }
     }
 }
 
 # Output the number of supported products
-$supportedProductCount = $supportedProductsHash.Values | Measure-Object | Select-Object -ExpandProperty Count
+$supportedProductCount = $supportedProductsHash.Values.Name | Measure-Object | Select-Object -ExpandProperty Count
 Write-Host ("Extracted {0} supported products from XML" -f $supportedProductCount) -ForegroundColor Cyan
 
 # Step 4: Matching applications with progress tracking outside the function
@@ -679,10 +864,25 @@ Write-Host ("Checking {0} applications against supported products..." -f $totalA
 $currentAppIndex = 0
 
 # Sanitise the raw data and remove apps to ignore
-Write-Host "Filtering Windows apps and excluding Store apps from AppInvRawData..." -ForegroundColor Cyan
-$appReportData = $appReportData | Where-Object { -not ($_.ApplicationName -like "Microsoft.*") -and -not ($_.ApplicationName -like "MicrosoftWindows.*") -and $_.Platform -eq 'Windows' }
+Write-Host "Filtering apps and excluding the following patterns from the collected results:" -ForegroundColor Cyan
+$AppNameExclusions | ForEach-Object { Write-Host " - $_" -ForegroundColor Cyan }
+
+# Apply the filter to exclude matching app names
+$appReportData = $appReportData | Where-Object {
+    # Check if the ApplicationName matches any of the exclusion patterns
+    $excludeMatch = $false
+    foreach ($pattern in $AppNameExclusions) {
+        if ($_.ApplicationName -like $pattern) {
+            $excludeMatch = $true
+            break  # Exit the loop if a match is found
+        }
+    }
+    -not $excludeMatch  # Only include apps that do not match any exclusion patterns
+}
+
+# Get the total number of apps after filtering
 $totalAppsToMatch = $appReportData.Count
-Write-Host ("Total applications to test is: {0} out of a total of a total of {1}" -f $totalAppsToMatch, $totalApps) -ForegroundColor Cyan
+Write-Host "Total applications to test after filtering: $totalAppsToMatch" -ForegroundColor Green
 
 # Call the Find-Applications function and capture the results for all apps in one go
 $result = Find-Applications -ApplicationData $appReportData -supportedProductsHash $supportedProductsHash -totalApps $totalAppsToMatch
@@ -692,10 +892,10 @@ $matchedApps = $result[0]
 $unmatchedApps = $result[1]
 
 # Create a unique list of unmatched app names
-$uniqueUnmatchedAppNames = $unmatchedApps | Select-Object -ExpandProperty UnmatchedAppName -Unique
+$uniqueUnmatchedAppNames = $unmatchedApps | Select-Object -ExpandProperty UnmatchedAppInvName -Unique
 
 # Convert the unique unmatched app names into custom objects for export
-$uniqueUnmatchedAppNameObjects = $uniqueUnmatchedAppNames | ForEach-Object { [PSCustomObject]@{UnmatchedAppName = $_ } }
+$uniqueUnmatchedAppNameObjects = $uniqueUnmatchedAppNames | ForEach-Object { [PSCustomObject]@{UnmatchedAppInvName = $_ } }
 
 # After processing all applications
 $totalSkippedStoreApps = $totalApps - $totalAppsToMatch  # Calculate total skipped applications
@@ -706,30 +906,49 @@ Write-Host ("Total skipped applications (Store Apps & Non-Windows Apps): {0}" -f
 # Group matched applications by MatchedPMPCProduct to calculate Total Instances
 $instanceCount = $matchedApps | Group-Object MatchedPMPCProduct | ForEach-Object {
     [pscustomobject]@{
-        MatchedPMPCProduct   = $_.Name
-        TotalInstances       = $_.Count
-        MatchedPMPCProductId = $_.Group[0].MatchedPMPCProductId
-        MatchedAppNames      = ($_.Group | Select-Object -ExpandProperty MatchedAppInvName | Sort-Object -Unique) -join ", "
+        MatchedPMPCProduct    = $_.Name
+        TotalInstances        = $_.Count
+        MatchedPMPCProductId  = $_.Group[0].MatchedPMPCProductId
+        MatchedAppInvNames    = ($_.Group | Select-Object -ExpandProperty MatchedAppInvName | Sort-Object -Unique) -join ", "
+        MatchedAppInvVersions = ($_.Group | Select-Object -ExpandProperty MatchedAppInvVersion | Sort-Object -Unique) -join ", "
+        MatchedOnName         = ($_.Group | Select-Object -ExpandProperty MatchedOnName | Sort-Object -Unique) -join ", "
+        TotalVersionCount     = ($_.Group | Select-Object -ExpandProperty MatchedAppInvVersion | Sort-Object -Unique).Count
+        MatchedOnVersion      = ($_.Group | Select-Object -ExpandProperty MatchedOnVersion | Sort-Object -Unique) -join ", "
     }
 }
 
 # Display the table with the required columns in the desired order
 if ($instanceCount.Count -gt 0) {
     Write-Host ("Found {0} apps in {1} that matched PMPC products" -f $instanceCount.Count, $ReportingEndpointReportName) -ForegroundColor Green
-    $instanceCount | Format-Table -Property MatchedPMPCProduct, TotalInstances, MatchedPMPCProductId, MatchedAppNames -AutoSize
+    $instanceCount | Format-Table -Property MatchedPMPCProduct, 
+    @{Name = 'TotalInstances'; Expression = { [string]$_.TotalInstances }; Width = 15 }, 
+    @{Name = 'MatchedOnName'; Expression = { $_.MatchedOnName }; Width = 25 },
+    @{Name = 'MatchedOnVersion'; Expression = { $_.MatchedOnVersion }; Width = 25 },
+    @{Name = 'MatchedAppInvNames'; Expression = { 
+            if ($_.MatchedAppInvNames.Length -gt 55) { 
+                $_.MatchedAppInvNames.Substring(0, 52) + '...' 
+            }
+            else { 
+                $_.MatchedAppInvNames 
+            } 
+        }; Width = 50 
+    },
+    @{Name = 'TotalVersions'; Expression = { [string]$_.TotalVersionCount }; Width = 15 }, 
+    @{Name = 'MatchedAppInvVersions'; Expression = { $_.MatchedAppInvVersions }; Width = 25 } -AutoSize
 }
 
 # Step 5: Calculate ROI
-
 # Check if DeviceName data is available
-if ($matchedApps.DeviceName) {
+if ($matchedApps | Where-Object { -not [string]::IsNullOrWhiteSpace($_.DeviceName) }) {
 
     # Calculate the total number of unique devices
     $uniqueDevices = $matchedApps | Select-Object -ExpandProperty DeviceName -Unique
     $deviceCount = $uniqueDevices.Count
 }
 else {
-    $deviceCount = 0
+
+    # Check if the device count is available, typically this should be available for AppInvAggregate when we called Get-InTuneDeviceCount
+    if (-not $deviceCount) { $deviceCount = 0 }
 }
 
 # Display the ROI calculation
@@ -755,17 +974,17 @@ if ($instanceCount.Count -gt 0) {
     Write-Host ("  - Average number of hours to research, package and test each application: {0}" -f $ROI_AverageHoursPerApp) -ForegroundColor Yellow
     Write-Host ("  - Average human cost per hour to package a single application: {0} {1}" -f $ROI_AverageCostPerHour, $ROI_Currency) -ForegroundColor Yellow
 
-    if ($deviceCount -gt 0) {
+    if ($deviceCount -ne 0) {
         Write-Host ("  - Number of devices in your environment: {0}" -f $deviceCount) -ForegroundColor Yellow
     }
     else {
         Write-Host ("  - Number of devices in your environment: {0}" -f $deviceCount) -ForegroundColor Yellow
-        Write-Host "  - * No device data was found in the report to calculate cost based on your device count." -ForegroundColor Yellow
+        Write-Host "    * No device data was found in the report to calculate cost based on your device count." -ForegroundColor Yellow
     }
 
     # Output the results as a table
     $roiResults | Format-Table -AutoSize
-    if ($deviceCount -gt 0) {
+    if ($deviceCount -ne 0) {
         Write-Host 'Please note: Estimated quotes do not reflect the multiple discounts we offer for partners, non-profits and multi-year purchases.' -ForegroundColor Yellow
     }
     Write-Host "You can request an accurate quote from our team at https://patchmypc.com/request-quote" -ForegroundColor Green
@@ -790,27 +1009,28 @@ switch ($FormatChoice) {
         
         # Conditional selection of columns based on DeviceName existence
         if ($hasDeviceName) {
-            $matchedApps | Select-Object DeviceName, MatchedAppInvName, MatchedPMPCProduct, MatchedPMPCProductId | Export-Csv -Path $matchedOutputFile -NoTypeInformation
+            $matchedApps | Select-Object DeviceName, MatchedAppInvName, MatchedAppInvVersion, MatchedPMPCProduct, MatchedPMPCProductId | Export-Csv -Path $matchedOutputFile -NoTypeInformation
         }
         else {
-            $matchedApps | Select-Object MatchedAppInvName, MatchedPMPCProduct, MatchedPMPCProductId | Export-Csv -Path $matchedOutputFile -NoTypeInformation
+            $matchedApps | Select-Object MatchedAppInvName, MatchedAppInvVersion, MatchedPMPCProduct, MatchedPMPCProductId | Export-Csv -Path $matchedOutputFile -NoTypeInformation
         }
         
         Write-Host ("Saving unmatched results to CSV: {0}" -f $unmatchedOutputRawFile) -ForegroundColor Cyan
         if ($hasDeviceName) {
-            $unmatchedApps | Select-Object DeviceName, UnmatchedAppName | Export-Csv -Path $unmatchedOutputRawFile -NoTypeInformation
+            $unmatchedApps | Select-Object DeviceName, UnmatchedAppInvName, UnmatchedAppInvVersion | Export-Csv -Path $unmatchedOutputRawFile -NoTypeInformation
         }
         else {
-            $unmatchedApps | Select-Object UnmatchedAppName | Export-Csv -Path $unmatchedOutputRawFile -NoTypeInformation
+            $unmatchedApps | Select-Object UnmatchedAppInvName, UnmatchedAppInvVersion | Export-Csv -Path $unmatchedOutputRawFile -NoTypeInformation
         }
         
         Write-Host ("Saving unsupported app results to CSV: {0}" -f $unmatchedOutputFile) -ForegroundColor Cyan
         
         # Group by UnmatchedAppName and count instances for TotalInstances
-        $uniqueUnmatchedAppNameObjects = $unmatchedApps | Group-Object -Property UnmatchedAppName | ForEach-Object {
+        $uniqueUnmatchedAppNameObjects = $unmatchedApps | Group-Object -Property UnmatchedAppInvName | ForEach-Object {
             [PSCustomObject]@{
-                UnmatchedAppName = $_.Name
-                TotalInstances   = $_.Count
+                UnmatchedAppInvName    = $_.Name
+                UnmatchedAppInvVersion = ($_.Group | Select-Object -ExpandProperty UnmatchedAppInvVersion | Sort-Object -Unique) -join ", "
+                TotalInstances         = $_.Count
             }
         }
 
@@ -819,10 +1039,11 @@ switch ($FormatChoice) {
         # Create supported apps data and export to CSV
         $supportedAppsData = $instanceCount | ForEach-Object {
             [PSCustomObject]@{
-                MatchedAppInvName    = $_.MatchedPMPCProduct
-                TotalInstances       = $_.TotalInstances
-                MatchedPMPCProduct   = $_.MatchedPMPCProduct
-                MatchedPMPCProductId = $_.MatchedPMPCProductId
+                MatchedAppInvName     = $_.MatchedAppInvNames
+                MatchedAppInvVersions = $_.MatchedAppInvVersions
+                TotalInstances        = $_.TotalInstances
+                MatchedPMPCProduct    = $_.MatchedPMPCProduct
+                MatchedPMPCProductId  = $_.MatchedPMPCProductId
             }
         }
 
@@ -832,27 +1053,28 @@ switch ($FormatChoice) {
     'json' {
         Write-Host ("`nSaving matched results to JSON: {0}" -f $matchedOutputFile) -ForegroundColor Cyan
         if ($hasDeviceName) {
-            $matchedApps | Select-Object DeviceName, MatchedAppInvName, MatchedPMPCProduct, MatchedPMPCProductId | ConvertTo-Json | Out-File -FilePath $matchedOutputFile
+            $matchedApps | Select-Object DeviceName, MatchedAppInvName, MatchedAppInvVersion, MatchedPMPCProduct, MatchedPMPCProductId | ConvertTo-Json | Out-File -FilePath $matchedOutputFile
         }
         else {
-            $matchedApps | Select-Object MatchedAppInvName, MatchedPMPCProduct, MatchedPMPCProductId | ConvertTo-Json | Out-File -FilePath $matchedOutputFile
+            $matchedApps | Select-Object MatchedAppInvName, MatchedAppInvVersion, MatchedPMPCProduct, MatchedPMPCProductId | ConvertTo-Json | Out-File -FilePath $matchedOutputFile
         }
 
         Write-Host ("Saving unmatched results to JSON: {0}" -f $unmatchedOutputRawFile) -ForegroundColor Cyan
         if ($hasDeviceName) {
-            $unmatchedApps | Select-Object DeviceName, UnmatchedAppName | ConvertTo-Json | Out-File -FilePath $unmatchedOutputRawFile
+            $unmatchedApps | Select-Object DeviceName, UnmatchedAppInvName, UnmatchedAppInvVersion | ConvertTo-Json | Out-File -FilePath $unmatchedOutputRawFile
         }
         else {
-            $unmatchedApps | Select-Object UnmatchedAppName | ConvertTo-Json | Out-File -FilePath $unmatchedOutputRawFile
+            $unmatchedApps | Select-Object UnmatchedAppInvName, UnmatchedAppInvVersion | ConvertTo-Json | Out-File -FilePath $unmatchedOutputRawFile
         }
 
         Write-Host ("Saving unsupported app results to JSON: {0}" -f $unmatchedOutputFile) -ForegroundColor Cyan
         
         # Group by UnmatchedAppName and count instances for TotalInstances
-        $uniqueUnmatchedAppNameObjects = $unmatchedApps | Group-Object -Property UnmatchedAppName | ForEach-Object {
+        $uniqueUnmatchedAppNameObjects = $unmatchedApps | Group-Object -Property UnmatchedAppInvName | ForEach-Object {
             [PSCustomObject]@{
-                UnmatchedAppName = $_.Name
-                TotalInstances   = $_.Count  # Changed to TotalInstances
+                UnmatchedAppInvName    = $_.Name
+                UnmatchedAppInvVersion = ($_.Group | Select-Object -ExpandProperty UnmatchedAppInvVersion | Sort-Object -Unique) -join ", "
+                TotalInstances         = $_.Count
             }
         }
 
@@ -862,6 +1084,7 @@ switch ($FormatChoice) {
         $supportedAppsData = $instanceCount | ForEach-Object {
             [PSCustomObject]@{
                 MatchedAppInvName    = $_.MatchedPMPCProduct
+                MatchedAppInvVersion = ($_.MatchedAppVersions -join ", ")
                 TotalInstances       = $_.TotalInstances
                 MatchedPMPCProduct   = $_.MatchedPMPCProduct
                 MatchedPMPCProductId = $_.MatchedPMPCProductId
@@ -870,5 +1093,19 @@ switch ($FormatChoice) {
 
         Write-Host ("Saving supported apps results to JSON: {0}" -f $supportedAppsOutputFile) -ForegroundColor Cyan
         $supportedAppsData | ConvertTo-Json | Out-File -FilePath $supportedAppsOutputFile
+    }
+}
+
+# Disconnect from Graph
+if (Get-MgContext) {
+
+    $disconnectChoice = Read-Host "Do you want to disconnect from Microsoft Graph? (y/n)"
+
+    if ($disconnectChoice -eq 'y') {
+        Disconnect-MgGraph
+       
+    }
+    else {
+        Write-Host "You chose not to disconnect from Microsoft Graph. You can use the Disconnect-MgGraph cmdlet to delete your session manually." -ForegroundColor Yellow
     }
 }
