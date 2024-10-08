@@ -151,7 +151,7 @@ param (
     [ValidateSet('ApplicationCertificate', 'ApplicationClientSecret', 'Delegated')] 
     [string]$AuthFlow = 'Delegated',
     [ValidateSet('AppInvRawData', 'AppInvAggregate')]
-    [string]$ReportingEndpointReportName = 'AppInvAggregate',
+    [string]$ReportingEndpointReportName = 'AppInvRawData',
     [string]$AppInvRawData_Filter = "Platform eq 'Windows'", # MS Document suggests filters are not supported for AppInvRawData but it works!
     [string[]]$AppInvRawData_SelectedProperties = @(
         "ApplicationKey",
