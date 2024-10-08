@@ -176,7 +176,13 @@ param (
         "Clipchamp.*", 
         "Microsoft Intune Management Extension",
         "Patch My PC Publishing Service", 
-        "Microsoft Configuration Manager Console"
+        "Microsoft Configuration Manager Console",
+        "Microsoft Edge Update",
+        "Microsoft Teams Meeting Add-in for Microsoft Office",
+        "Mozilla Maintenance Service",
+        "MDOP MBAM",
+        "Microsoft Update Health Tools",
+        "Microsoft Search in Bing"
         ),
     [ValidatePattern('^https://.*')]
     [string]$XmlUrl = "https://api.patchmypc.com/downloads/xml/supportedproducts.xml",
