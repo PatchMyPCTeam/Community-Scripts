@@ -3,6 +3,7 @@
 Searches for installed software by DisplayName and returns 'Applicable' if not found.
 
 Created on:   2024-06-17
+Updated on:   2024-10-24
 Created by:   Ben Whitmore @PatchMyPC
 Filename:     Get-NotInstalledRequirement.ps1
 
@@ -28,11 +29,29 @@ You assume all risks and responsibilities associated with its usage
 
 #>
 
-# Define the application name to search for (Note: We use -like *$app* in code to match on DisplayName. If any of the apps are found, the script will return not return 'Applicable')
+# Define the exact application name to search for
 [array]$appNameList = @('Cisco Secure Client', 'Cisco AnyConnect')
 
 # Set the error action preference to stop the script if an error occurs
 $ErrorActionPreference = 'Stop'
+
+# Function to replace special characters with %
+function Get-SpecialCharsEscaped {
+    param (
+        [string]$inputString
+    )
+    
+    $specialChars = @('[', ']', '*', '?', '`', '(', ')', '$')
+
+    # Escape each special character by swapping it for a % sign
+    foreach ($char in $specialChars) {
+
+        $escapedChar = "%"
+        $inputString = $inputString.Replace($char, $escapedChar)
+    }
+
+    return $inputString
+}
 
   # Function to generate full registry paths based on architecture and hives to search
   function Get-PathsToSearch {
@@ -84,7 +103,12 @@ function Get-InstalledSoftware {
             $displayName = (Get-ItemProperty -Path $subkey.PSPath -Name DisplayName -ErrorAction SilentlyContinue).DisplayName
 
             foreach ($app in $appName) {
-                if ($displayName -like "$app") {
+                
+                # Escape special characters in the app name
+                $escapedApp = Get-SpecialCharsEscaped -inputString $app
+                $escapedDisplayname = Get-SpecialCharsEscaped -inputString $displayName
+
+                if ($escapedDisplayname -eq $escapedApp) {
 
                     # Gather additional information when a match is found
                     $displayVersion = (Get-ItemProperty -Path $subkey.PSPath -Name DisplayVersion -ErrorAction SilentlyContinue).DisplayVersion
@@ -97,7 +121,7 @@ function Get-InstalledSoftware {
                         DisplayVersion = $displayVersion
                         Publisher      = $publisher
                         InstallDate    = $installDate
-                        MatchFoundOn   = "*$app*"
+                        MatchFoundOn   = $app
                     }
 
                     $detected = $true
