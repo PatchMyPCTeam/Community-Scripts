@@ -40,7 +40,7 @@ Get-NotInstalledRequirement.ps1 -appNameList 'MyApp v2* 2024'
 
 #>
 
-# Define the exact application name to search for
+# Define application name(s) to search for. Wilcards * are supported
 [array]$appNameList = @('Cisco Secure Client', 'Cisco AnyConnect')
 
 # Set the error action preference to stop the script if an error occurs
