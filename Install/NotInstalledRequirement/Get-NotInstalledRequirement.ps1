@@ -13,6 +13,8 @@ This script searches through specified registry paths to find installed software
 If a match is found on $appnameList, no output is displayed and the requirment rule is not satisfied which prevents the installation of the Win32 app.
 If no match is found, 'Applicable' is written to the output stream to indicate the software is not installed and the Win32 app is applicable because the requirement is met.
 
+Note: Script parameters are not supported in the Win32 app model, so the variable $appNameList in the script must be modified directly to change the application name(s) to search for.
+
 References/credit:
 https://github.com/PatchMyPCTeam/Community-Scripts/tree/main/Uninstall/Pre-Uninstall/Uninstall-Software @Codaamok
 
@@ -26,6 +28,15 @@ It is recommended to thoroughly test the script in a non-production environment 
 The author and co-author(s) cannot be held responsible for any damages, losses, or adverse effects that may arise from the use of this script
 You assume all risks and responsibilities associated with its usage
 ---------------------------------------------------------------------------------
+
+.PARAMETER appNameList
+The list of application names to search for. Wildcards are supported.
+
+.Example
+Get-NotInstalledRequirement.ps1 -appNameList 'Cisco Secure Client', 'Cisco AnyConnect'
+
+.EXAMPLE
+Get-NotInstalledRequirement.ps1 -appNameList 'MyApp v2* 2024'
 
 #>
 
@@ -41,7 +52,7 @@ function Get-SpecialCharsEscaped {
         [string]$inputString
     )
     
-    $specialChars = @('[', ']', '*', '?', '`', '(', ')', '$')
+    $specialChars = @('[', ']', '?', '`', '(', ')', '$')
 
     # Escape each special character by swapping it for a % sign
     foreach ($char in $specialChars) {
@@ -108,7 +119,7 @@ function Get-InstalledSoftware {
                 $escapedApp = Get-SpecialCharsEscaped -inputString $app
                 $escapedDisplayname = Get-SpecialCharsEscaped -inputString $displayName
 
-                if ($escapedDisplayname -eq $escapedApp) {
+                if ($escapedDisplayname -like $escapedApp) {
 
                     # Gather additional information when a match is found
                     $displayVersion = (Get-ItemProperty -Path $subkey.PSPath -Name DisplayVersion -ErrorAction SilentlyContinue).DisplayVersion
