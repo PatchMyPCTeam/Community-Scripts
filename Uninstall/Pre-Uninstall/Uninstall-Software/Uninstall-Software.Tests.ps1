@@ -285,7 +285,7 @@ Describe 'Uninstall-Software.ps1' {
             $ArgumentList -eq '/S' 
         }
 
-        .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -Architecture 'x64' -HivesToSearch 'HKLM' -WindowsInstaller 'All' -UninstallAll | Should -Invoke -CommandName 'Start-Process' -Times 2
+        .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -Architecture 'x64' -HivesToSearch 'HKLM' -WindowsInstaller 'Both' -UninstallAll | Should -Invoke -CommandName 'Start-Process' -Times 2
     }
     
     Context 'RemovePath parameter tests' {

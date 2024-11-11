@@ -109,6 +109,13 @@ Uninstall-Software.ps1 -DisplayName "AnyDesk" -EnforcedArguments "--remove --sil
 
 Uninstalls AnyDesk with the enforced arguments "--remove --silent", instead of using the default parameters in the UninstallString.
 
+### EXAMPLE 7
+```
+Uninstall-Software.ps1 -DisplayName "VLC Media Player*" -WindowsInstaller "Both" -AdditionalEXEArguments "/S" -UninstallAll
+```
+
+Uninstalls all instances of VLC Media Player, whether it was installed from an MSI or an EXE, and supplies "/S" to the uninstaller if it was installed with an EXE.
+
 ## PARAMETERS
 
 ### -DisplayName
@@ -167,15 +174,15 @@ Accept wildcard characters: False
 ```
 
 ### -WindowsInstaller
-Specify a value between 1 and 0 to use as an additional criteria when trying to find installed software.
+Acceptable string values are: "0", "1" and "Both" - these are used as an additional criteria when trying to find installed software.
 
-If WindowsInstaller registry value has a data of 1, it generally means software was installed from MSI.
+If the WindowsInstaller registry value has a data of 1, it generally means software was installed from MSI. 
 
-Omitting the parameter entirely or specify a value of 0 generally means software was installed from EXE
+If the registry value is 0 (not common), or not present at all (more common), it generally means software was installed from an EXE.
 
-This is useful to be more specific about software titles you want to uninstall.
+Specifying a value of 0 will look for software where WindowsInstaller is equal to 0, or not present at all. 
 
-Specifying a value of 0 will look for software where WindowsInstaller is equal to 0, or not present at all.
+Alternatively, if you specify "Both", the script will look for software where WindowsInstaller is either not present, 0, or 1.
 
 ```yaml
 Type: Int32
