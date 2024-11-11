@@ -273,6 +273,20 @@ Describe 'Uninstall-Software.ps1' {
 
         .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -Architecture 'x64' -HivesToSearch 'HKLM' -WindowsInstaller 1 -Force | Should -Be 0
     }
+
+    it 'verify all exe and msi software is uninstalled when using -UninstallAll and -WindowsInstaller "All"' {
+        Mock Start-Process {} -Verifiable -ParameterFilter { 
+            $FilePath -eq 'msiexec.exe' -and 
+            $ProductCode -eq '{23170F69-40C1-2702-2201-000001000000}' 
+        }
+
+        Mock Start-Process {} -Verifiable -ParameterFilter { 
+            $FilePath -eq 'C:\Program Files\7-Zip\Uninstall.exe' -and 
+            $ArgumentList -eq '/S' 
+        }
+
+        .\Uninstall-Software.ps1 -DisplayName '7-Zip*' -Architecture 'x64' -HivesToSearch 'HKLM' -WindowsInstaller 'All' -UninstallAll | Should -Invoke -CommandName 'Start-Process' -Times 2
+    }
 }
 
 AfterAll {

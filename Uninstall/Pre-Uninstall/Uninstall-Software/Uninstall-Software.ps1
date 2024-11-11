@@ -150,8 +150,8 @@ param (
     [String[]]$HivesToSearch = 'HKLM',
 
     [Parameter()]
-    [ValidateSet(1, 0)]
-    [Int]$WindowsInstaller,
+    [ValidateSet('1', '0', 'All')]
+    [String]$WindowsInstaller = '0',
 
     [Parameter()]
     [ValidateSet(1, 0)]
@@ -202,8 +202,8 @@ function Get-InstalledSoftware {
         [String[]]$HivesToSearch = 'HKLM',
 
         [Parameter()]
-        [ValidateSet(1, 0)]
-        [Int]$WindowsInstaller,
+        [ValidateSet('1', '0', 'All')]
+        [String]$WindowsInstaller,
     
         [Parameter()]
         [ValidateSet(1, 0)]
@@ -256,18 +256,31 @@ function Get-InstalledSoftware {
 
     $AllFoundObjects = Get-ItemProperty -Path $FullPaths -Name $propertyNames -ErrorAction SilentlyContinue
 
-    foreach ($Result in $AllFoundObjects) {
+    :AllFoundObjects foreach ($Result in $AllFoundObjects) {
         try {
             if ($Result.DisplayName -notlike $DisplayName) {
                 #Write-Verbose ('Skipping {0} as name does not match {1}' -f $Result.DisplayName, $DisplayName)
                 continue
             }
-            # Casting to [bool] will return $false if the registry property is 0 or not present, and can also cast integers 0/1 to $false/$true.
-            # Function accepts integers however, as supplying 1 for an expected bool works within powershell, but not on a powershell.exe command line.
-            if ($PSBoundParameters.ContainsKey('WindowsInstaller') -and [bool]$Result.WindowsInstaller -ne [bool]$WindowsInstaller) {
-                Write-Verbose ('Skipping {0} as WindowsInstaller value {1} does not match {2}' -f $Result.DisplayName, $Result.WindowsInstaller, $WindowsInstaller)
-                continue
+
+            switch ($WindowsInstaller) {
+                'All' {
+                    # Do nothing
+                }
+                '1' {
+                    if ($Result.WindowsInstaller -ne 1) {
+                        Write-Verbose ('Skipping {0} as WindowsInstaller value {1} does not match {2}' -f $Result.DisplayName, $Result.WindowsInstaller, $WindowsInstaller)
+                        continue AllFoundObjects
+                    }
+                }
+                '0' {
+                    if ($Result.WindowsInstaller -ne 0 -and -not [String]::IsNullOrWhiteSpace($Result.WindowsInstaller)) {
+                        Write-Verbose ('Skipping {0} as WindowsInstaller value {1} does not match {2}' -f $Result.DisplayName, $Result.WindowsInstaller, $WindowsInstaller)
+                        continue AllFoundObjects
+                    }
+                }
             }
+
             if ($PSBoundParameters.ContainsKey('SystemComponent') -and [bool]$Result.SystemComponent -ne [bool]$SystemComponent) {
                 Write-Verbose ('Skipping {0} as SystemComponent value {1} does not match {2}' -f $Result.DisplayName, $Result.SystemComponent, $SystemComponent)
                 continue
