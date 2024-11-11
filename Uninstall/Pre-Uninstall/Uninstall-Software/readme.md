@@ -371,6 +371,23 @@ Accept pipeline input: False
 Accept wildcard characters: False
 ```
 
+### -RemovePath
+Supply a list of files and folders to be removed after the uninstallations have been processed.
+
+Use with -Force if all items are to be removed even if there is no software found to be uninstalled or if errors are encountered during uninstallation.
+
+```yaml
+Type: String[]
+Parameter Sets: (All)
+Aliases:
+
+Required: False
+Position: Named
+Default value: None
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
 ### -ProgressAction
 {{ Fill ProgressAction Description }}
 
