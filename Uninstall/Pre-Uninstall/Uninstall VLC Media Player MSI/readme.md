@@ -1,5 +1,12 @@
 # Uninstall-VLCMediaPlayer-MSI.ps1
 
+- [Uninstall-VLCMediaPlayer-MSI.ps1](#uninstall-vlcmediaplayer-msips1)
+  - [Patch My PC Publisher](#patch-my-pc-publisher)
+    - [Configuration Manager](#configuration-manager)
+    - [Intune](#intune)
+  - [Patch My PC Cloud](#patch-my-pc-cloud)
+    - [Intune](#intune-1)
+
 The developers for VLC Media Player released a new update 3.0.21 in June 2024. While they released a new .exe installer, they did not release a new .msi installer.
 
 You can read more about it here: https://forum.videolan.org/viewtopic.php?t=164735
