@@ -3,7 +3,7 @@
 Searches for installed software by DisplayName and returns 'Applicable' if not found.
 
 Created on:   2024-06-17
-Updated on:   2024-10-24
+Updated on:   2024-11-13
 Created by:   Ben Whitmore @PatchMyPC
 Filename:     Get-NotInstalledRequirement.ps1
 
@@ -12,8 +12,6 @@ This script can be used as a requirement rule on a Win32 app to ensure the Win32
 This script searches through specified registry paths to find installed software that matches a given DisplayName.
 If a match is found on $appnameList, no output is displayed and the requirment rule is not satisfied which prevents the installation of the Win32 app.
 If no match is found, 'Applicable' is written to the output stream to indicate the software is not installed and the Win32 app is applicable because the requirement is met.
-
-Note: Script parameters are not supported in the Win32 app model, so the variable $appNameList in the script must be modified directly to change the application name(s) to search for.
 
 References/credit:
 https://github.com/PatchMyPCTeam/Community-Scripts/tree/main/Uninstall/Pre-Uninstall/Uninstall-Software @Codaamok
@@ -29,40 +27,16 @@ The author and co-author(s) cannot be held responsible for any damages, losses, 
 You assume all risks and responsibilities associated with its usage
 ---------------------------------------------------------------------------------
 
-.PARAMETER appNameList
-The list of application names to search for. Wildcards are supported.
-
-.Example
-Get-NotInstalledRequirement.ps1 -appNameList 'Cisco Secure Client', 'Cisco AnyConnect'
-
-.EXAMPLE
-Get-NotInstalledRequirement.ps1 -appNameList 'MyApp v2* 2024'
-
 #>
 
-# Define application name(s) to search for. Wilcards * are supported
+# Define the application name to search for 
+# Note: The script will search for the exact match based on what you enter in $appNameList. 
+# You can add asterisk characters (*) if you want to use wildcards. 
+# If any of the apps are found, the script will not return 'Applicable' and the Win32 app will not be installed.
 [array]$appNameList = @('Cisco Secure Client', 'Cisco AnyConnect')
 
 # Set the error action preference to stop the script if an error occurs
 $ErrorActionPreference = 'Stop'
-
-# Function to replace special characters with %
-function Get-SpecialCharsEscaped {
-    param (
-        [string]$inputString
-    )
-    
-    $specialChars = @('[', ']', '?', '`', '(', ')', '$')
-
-    # Escape each special character by swapping it for a % sign
-    foreach ($char in $specialChars) {
-
-        $escapedChar = "%"
-        $inputString = $inputString.Replace($char, $escapedChar)
-    }
-
-    return $inputString
-}
 
   # Function to generate full registry paths based on architecture and hives to search
   function Get-PathsToSearch {
@@ -114,12 +88,7 @@ function Get-InstalledSoftware {
             $displayName = (Get-ItemProperty -Path $subkey.PSPath -Name DisplayName -ErrorAction SilentlyContinue).DisplayName
 
             foreach ($app in $appName) {
-                
-                # Escape special characters in the app name
-                $escapedApp = Get-SpecialCharsEscaped -inputString $app
-                $escapedDisplayname = Get-SpecialCharsEscaped -inputString $displayName
-
-                if ($escapedDisplayname -like $escapedApp) {
+                if ($displayName -like "$app") {
 
                     # Gather additional information when a match is found
                     $displayVersion = (Get-ItemProperty -Path $subkey.PSPath -Name DisplayVersion -ErrorAction SilentlyContinue).DisplayVersion
@@ -132,7 +101,7 @@ function Get-InstalledSoftware {
                         DisplayVersion = $displayVersion
                         Publisher      = $publisher
                         InstallDate    = $installDate
-                        MatchFoundOn   = $app
+                        MatchFoundOn   = "$app"
                     }
 
                     $detected = $true
