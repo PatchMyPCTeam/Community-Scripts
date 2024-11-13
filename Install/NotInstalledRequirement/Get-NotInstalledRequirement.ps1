@@ -3,6 +3,7 @@
 Searches for installed software by DisplayName and returns 'Applicable' if not found.
 
 Created on:   2024-06-17
+Updated on:   2024-11-13
 Created by:   Ben Whitmore @PatchMyPC
 Filename:     Get-NotInstalledRequirement.ps1
 
@@ -28,7 +29,10 @@ You assume all risks and responsibilities associated with its usage
 
 #>
 
-# Define the application name to search for (Note: We use -like *$app* in code to match on DisplayName. If any of the apps are found, the script will return not return 'Applicable')
+# Define the application name to search for 
+# Note: The script will search for the exact match based on what you enter in $appNameList. 
+# You can add asterisk characters (*) if you want to use wildcards. 
+# If any of the apps are found, the script will not return 'Applicable' and the Win32 app will not be installed.
 [array]$appNameList = @('Cisco Secure Client', 'Cisco AnyConnect')
 
 # Set the error action preference to stop the script if an error occurs
@@ -97,7 +101,7 @@ function Get-InstalledSoftware {
                         DisplayVersion = $displayVersion
                         Publisher      = $publisher
                         InstallDate    = $installDate
-                        MatchFoundOn   = "*$app*"
+                        MatchFoundOn   = "$app"
                     }
 
                     $detected = $true
