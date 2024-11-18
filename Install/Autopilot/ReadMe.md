@@ -29,28 +29,28 @@ The following registry tests are performed to determine if the device is in prov
 
 ```yml
   TestName: "Reg_ProvisioningAgentStatus"
-  TestPath: "HKLM\SOFTWARE\Microsoft\Provisioning\Agent"
+  TestPath: "HKLM\\SOFTWARE\\Microsoft\\Provisioning\\Agent"
   TestValueName: "CurrentEvent"
   ProvisioningFinishedValue: "0x5"
 ```
 
 ```yml
   TestName: "Reg_AutopilotDeviceSetupPhase"
-  TestPath: "HKLM\SOFTWARE\Microsoft\Windows\Autopilot\EnrollmentStatusTracking\Device\Setup"
+  TestPath: "HKLM\\SOFTWARE\\Microsoft\\Windows\\Autopilot\\EnrollmentStatusTracking\\Device\Setup"
   TestValueName: "HasProvisioningCompleted"
   ProvisioningFinishedValue: "0xffffffff"
 ```
 
 ```yml
  TestName: "Reg_AutopilotAccountSetupPhase"
-  TestPath: "HKLM\SOFTWARE\Microsoft\Windows\Autopilot\EnrollmentStatusTracking\{^S-1-12-1-(\d+-)+\d+$}\Setup"
+  TestPath: "HKLM\\SOFTWARE\\Microsoft\\Windows\Autopilot\\EnrollmentStatusTracking\\{^S-1-12-1-(\\d+-)+\d+$}\\Setup"
   TestValueName: "HasProvisioningCompleted"
   ProvisioningFinishedValue: "0xffffffff"
 ```
 
 ```yml
   TestName: "Reg_DevicePreparationCategoryStatus"
-  TestPath: "HKLM\SOFTWARE\Microsoft\Provisioning\AutopilotSettings"
+  TestPath: "HKLM\\SOFTWARE\\Microsoft\\Provisioning\\AutopilotSettings"
   TestValueName: "DevicePreparationCategory.Status"
   TestJsonValue: "categoryState"
   ProvisioningFinishedValue: "succeeded"
@@ -58,7 +58,7 @@ The following registry tests are performed to determine if the device is in prov
 
 ```yml
   TestName: "Reg_DeviceSetupCategoryStatus"
-  TestPath: "HKLM\SOFTWARE\Microsoft\Provisioning\AutopilotSettings"
+  TestPath: "HKLM\\SOFTWARE\\Microsoft\\Provisioning\\AutopilotSettings"
   TestValueName: "DeviceSetupCategory.Status"
   TestJsonValue: "categoryState"
   ProvisioningFinishedValue: "succeeded"
@@ -66,7 +66,7 @@ The following registry tests are performed to determine if the device is in prov
 
 ```yml
   TestName: "Reg_AccountSetupCategoryStatus"
-  TestPath: "HKLM\SOFTWARE\Microsoft\Provisioning\AutopilotSettings"
+  TestPath: "HKLM\\SOFTWARE\\Microsoft\\Provisioning\\AutopilotSettings"
   TestValueName: "AccountSetupCategory.Status"
   TestJsonValue: "categoryState"
   ProvisioningFinishedValue:
@@ -80,7 +80,7 @@ The following WMI tests are performed to determine if the device is in provision
 
 ```yaml
   TestName: "Wmi_HasProvisioningCompleted"
-  TestClass: "root\cimv2\mdm\dmmap"
+  TestClass: "root\\cimv2\\mdm\\dmmap"
   TestNamespace: "MDM_EnrollmentStatusTracking_Setup01"
   TestValueName: "HasProvisioningCompleted"
   ProvisioningFinishedValue: true
