@@ -167,16 +167,8 @@ Accept wildcard characters: False
 ```
 
 ### -WindowsInstaller
-Specify a value between 1 and 0 to use as an additional criteria when trying to find installed software.
 
-If WindowsInstaller registry value has a data of 1, it generally means software was installed from MSI.
-Omitting the parameter entirely or specify a value of 0 generally means software was installed from EXE
-
-This is useful to be more specific about software titles you want to uninstall.
-
-Specifying a value of 0 will look for software where WindowsInstaller is equal to 0, or not present at all.
-
-If this parameter is not specified at all, the script will try to uninstall both EXE and MSI instances of the software.
+Specifies the software type to uninstall. Set it to ```1``` for .msi-based software, ```0``` for .exe-based software, or omit to target both types based on other criteria.
 
 ```yaml
 Type: Int32
