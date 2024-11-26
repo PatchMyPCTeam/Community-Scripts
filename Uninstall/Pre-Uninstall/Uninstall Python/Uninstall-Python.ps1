@@ -41,7 +41,7 @@
     
     Uninstalls all versions of Python lower than 3.13.
 .EXAMPLE
-    Uninstall-Python.ps1 -Architecture 'x86''
+    Uninstall-Python.ps1 -Architecture 'x86'
 
     Uninstalls all 32-bit versions of Python.
 .EXAMPLE
