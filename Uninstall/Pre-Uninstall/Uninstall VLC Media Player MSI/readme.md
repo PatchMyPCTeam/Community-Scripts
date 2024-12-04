@@ -31,11 +31,11 @@ Therefore, you need to publish and deploy the ConfigMgr App EXE variant of VLC M
 2. Open the Patch My PC Publisher
 3. Navigate to the Config Apps tab
 4. Right-click on each of the below products (if enabled)
-   - VLC Media Player (x64) - MSI Install
-   - VLC Media Player (x86) - MSI Install
+   - VLC Media Player (x64) - EXE Install
+   - VLC Media Player (x86) - EXE Install
 5. Choose **Add custom pre/post script**:
 
-![Add custom pre/post script](images/Publisher-CM-AddCustomPrePostScript.png)
+![Add custom pre/post script](images/Publisher-CM-AddCustomPrePostScript-new.png)
 
 6. For **Pre-Script**, browse out and choose **Uninstall-VLCMediaPlayer-MSI.ps1** downloaded from step 1:
 
@@ -54,11 +54,11 @@ Therefore, you need to publish and deploy the Intune App EXE variant of VLC Medi
 2. Open the Patch My PC Publisher
 3. Navigate to the Intune Apps tab
 4. Right-click on each of the below products (if enabled)
-   - VLC Media Player (x64) - MSI Install
-   - VLC Media Player (x86) - MSI Install
+   - VLC Media Player (x64) - EXE Install
+   - VLC Media Player (x86) - EXE Install
 5. Choose **Add custom pre/post script**:
 
-![Add custom pre/post script](images/Publisher-Intune-AddCustomPrePostScript.png)
+![Add custom pre/post script](images/Publisher-Intune-AddCustomPrePostScript-new.png)
 
 6. For **Pre-Script**, browse out and choose **Uninstall-VLCMediaPlayer-MSI.ps1** downloaded from step 1:
 
