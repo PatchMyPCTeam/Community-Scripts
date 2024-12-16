@@ -22,9 +22,8 @@
 $Apps = (Get-ChildItem HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\, HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\, HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\, HKCU:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\ -ErrorAction SilentlyContinue | Get-ItemProperty | Select-Object DisplayName, DisplayVersion, Version, WindowsInstaller, SystemComponent, UninstallString, QuietUninstallString, Publisher, URLInfoAbout, InstallLocation, InstallSource, PSPath) | Where-Object { -not([System.String]::IsNullOrEmpty($_.DisplayName)) }
 $SelectedApp = $Apps | Sort-Object WindowsInstaller, DisplayName, SystemComponent | Out-GridView -Title "Select Application" -OutputMode Single | Select-Object -First 1
 
-if ($SelectedApp) {
-	$SelectedApp.DisplayName -match '(?:(\d+)\.)?(?:(\d+)\.)?(?:(\d+)\.\d+)' | Out-Null
-	if ($Matches) {
+if ($SelectedApp) {	
+	if ($SelectedApp.DisplayName -match '(?:(\d+)\.)?(?:(\d+)\.)?(?:(\d+)\.\d+)') {
 		$version = $Matches[0]
 		$DisplayNameNew = ($SelectedApp.DisplayName).Replace($version, '%')
 	}
