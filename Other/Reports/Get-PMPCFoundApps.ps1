@@ -114,16 +114,22 @@ The name of the first Patch My PC SKU used in ROI calculation. Default is "Enter
 The name of the second Patch My PC SKU used in ROI calculation. Default is "Enterprise Plus".
 
 .PARAMETER ROI_Quote1
-The initial quote amount for the first SKU. Default is 3499.
+The initial quote amount for the first SKU. Default is 3500.
 
 .PARAMETER ROI_Quote1_Device
 The quote per device for the first SKU. Default is 5.
 
 .PARAMETER ROI_Quote2
-The initial quote amount for the second SKU. Default is 2499.
+The initial quote amount for the second SKU. Default is 2500.
 
 .PARAMETER ROI_Quote2_Device
 The quote per device for the second SKU. Default is 3.5.
+
+.PARAMETER IgnorePrefixes
+An array of prefixes to ignore when cleaning application names. Default is an empty array.
+
+.PARAMETER DisplayNameHasNoSpaces
+A boolean value to indicate whether the display name of the application has no spaces. Default is $false.
 
 .EXAMPLE
 .\Get-PMPCFoundApps.ps1
@@ -177,7 +183,7 @@ param (
         "Microsoft Intune Management Extension",
         "Patch My PC Publishing Service", 
         "Microsoft Configuration Manager Console"
-        ),
+    ),
     [ValidatePattern('^https://.*')]
     [string]$XmlUrl = "https://api.patchmypc.com/downloads/xml/supportedproducts.xml",
     [switch]$UseExistingAppReportData = $false,
@@ -194,17 +200,43 @@ param (
     [ValidateNotNullOrEmpty()]
     [string]$ROI_SKU2 = "Enterprise Plus",
     [ValidateRange(0, 100000)]
-    [int]$ROI_Quote1 = 3499,
+    [int]$ROI_Quote1 = 3500,
     [ValidateRange(0.01, 100)]
     [double]$ROI_Quote1_Device = 5,
     [ValidateRange(0, 100000)]
-    [int]$ROI_Quote2 = 2499,
+    [int]$ROI_Quote2 = 2500,
     [ValidateRange(0.01, 100)]
-    [double]$ROI_Quote2_Device = 3.5
+    [double]$ROI_Quote2_Device = 3.5,
+    [string[]]$IgnorePrefixes = @(),
+    [switch]$DisplayNameHasNoSpaces = $false
 )
 
 
 $VerbosePreference = "SilentlyContinue"
+
+function Get-CleanAppName {
+    param(
+        [string]$AppName,
+        [string[]]$Prefixes
+    )
+    
+    if (-not $Prefixes) {
+        return $AppName
+    }
+
+    foreach ($prefix in $Prefixes) {
+
+        if ($AppName.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) {
+            $cleanName = $AppName.Substring($prefix.Length)
+            break
+        }
+        else {
+            $cleanName = $AppName
+        }
+    }
+
+    return $cleanName
+}
 
 # Function to download and parse XML
 Function Get-Xml {
@@ -345,14 +377,40 @@ Function Find-Applications {
         $currentAppIndex++
     
         $appName = $app.ApplicationName
+        
+        # Are we testing for display name with spaces removed?
+        if ($IgnorePrefixes) {
+            $cleanAppName = Get-CleanAppName -AppName $appName -Prefixes $IgnorePrefixes
+        }
+        else {
+            $cleanAppName = $appName
+        }
+
         $appVersion = $app.ApplicationVersion
         $isMatched = $false
     
         foreach ($pattern in $supportedProductsHash.Keys) {
             foreach ($product in $supportedProductsHash[$pattern]) {
-                $sqlSearchIncludePattern = $product.SQLSearchIncludePattern
-                $sqlSearchExcludePattern = $product.SQLSearchExcludePattern
-                $excludePattern = $product.ExcludePattern
+
+                # If $DisplayNameHasNoSpaces is set, add an additional pattern check onspaces removed from pattern
+                $sqlSearchIncludePattern = if ($DisplayNameHasNoSpaces -and $product.SQLSearchIncludePattern) { 
+                    @($product.SQLSearchIncludePattern, $product.SQLSearchIncludePattern.Replace(" ", ""))
+                }
+                else { 
+                    @($product.SQLSearchIncludePattern) 
+                }
+                $sqlSearchExcludePattern = if ($DisplayNameHasNoSpaces -and $product.SQLSearchExcludePattern) { 
+                    @($product.SQLSearchExcludePattern, $product.SQLSearchExcludePattern.Replace(" ", ""))
+                }
+                else { 
+                    @($product.SQLSearchExcludePattern) 
+                }
+                $excludePattern = if ($DisplayNameHasNoSpaces -and $product.ExcludePattern) { 
+                    @($product.ExcludePattern, $product.ExcludePattern.Replace(" ", ""))
+                }
+                else { 
+                    @($product.ExcludePattern) 
+                }
                 $sqlSearchVersionIncludePattern = $product.SQLSearchVersionIncludePattern
 
                 # Check if include pattern is null or empty
@@ -360,9 +418,51 @@ Function Find-Applications {
                     continue
                 }
 
-                # Check include pattern
-                $likeIncludePattern = $sqlSearchIncludePattern -replace '\*', '*' -replace '\%', '*'
-                if ($appName -like $likeIncludePattern) {
+                foreach ($pattern in $sqlSearchIncludePattern) {
+
+                    $likeIncludePattern = $pattern -replace '\*', '*' -replace '\%', '*'
+
+                    if ($cleanAppName -like $likeIncludePattern) {
+                        # Check exclusion patterns
+                        $sqlSearchExcludeMatch = -not [string]::IsNullOrWhiteSpace($sqlSearchExcludePattern) -and ($appName -like ($sqlSearchExcludePattern -replace '\*', '*' -replace '\%', '*'))
+                        $excludeMatch = -not [string]::IsNullOrWhiteSpace($excludePattern) -and ($appName -like ($excludePattern -replace '\*', '*' -replace '\%', '*'))
+
+                        # If the application name matches and is not excluded
+                        if (-not ($sqlSearchExcludeMatch -or $excludeMatch)) {
+
+                            # Track individual matches for CSV/JSON
+                            $matchedOnNamePattern = $likeIncludePattern
+                            $matchedOnVersionPattern = $null
+
+                            # Check SQLSearchVersionInclude only if it exists and after confirming name match
+                            if (-not [string]::IsNullOrWhiteSpace($sqlSearchVersionIncludePattern)) {
+
+                                # Replace wildcards in the version pattern
+                                $likeVersionPattern = $sqlSearchVersionIncludePattern -replace '\*', '*' -replace '\%', '*'
+                                
+                                # Perform version comparison
+                                if ($appVersion -like $likeVersionPattern) {
+                                    $matchedOnVersionPattern = $sqlSearchVersionIncludePattern
+                                }
+                            }
+
+                            $matchedAppDetail = [pscustomobject]@{
+                                DeviceName           = if ($app.PSObject.Properties['DeviceName']) { $app.DeviceName } else { $null }
+                                MatchedAppInvName    = $appName
+                                MatchedAppInvVersion = $appVersion
+                                MatchedPMPCProduct   = $product.Name
+                                MatchedPMPCProductId = $product.Id
+                                MatchedOnName        = $matchedOnNamePattern
+                                MatchedOnVersion     = $matchedOnVersionPattern
+                            }
+
+                            $detailedMatchedApplications += $matchedAppDetail
+                            $isMatched = $true
+                            break
+                        }
+                    }
+                
+                if ($cleanAppName -like $likeIncludePattern) {
 
                     # Check exclusion patterns
                     $sqlSearchExcludeMatch = -not [string]::IsNullOrWhiteSpace($sqlSearchExcludePattern) -and ($appName -like ($sqlSearchExcludePattern -replace '\*', '*' -replace '\%', '*'))
@@ -401,6 +501,7 @@ Function Find-Applications {
                         $isMatched = $true
                     }
                 }
+            }
             }
         }
 
