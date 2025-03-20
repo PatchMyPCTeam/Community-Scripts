@@ -111,7 +111,7 @@ if (-not (Test-Path -Path $SavePath -PathType Container)) {
     }
     catch {
         Write-Error "Failed to create directory: $SavePath. Error: $_"
-        break
+        throw
     }
 }
 else {
