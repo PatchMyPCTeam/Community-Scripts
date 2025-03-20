@@ -84,32 +84,57 @@ An array of native Intune report names to fetch (e.g., 'deviceManagement/detecte
 param (
     [string]$SavePath = "$env:TEMP\IntuneReports", # The path where the reports will be saved
     [ValidateSet('csv', 'json')] 
-    [string]$FormatChoice = 'csv', # Valid formats are 'csv' and 'json'
+    [string]$FormatChoice = 'csv',
     [ValidateSet('v1.0', 'beta')] 
-    [string]$EndpointVersion = 'beta', # Valid endpoints are 'v1.0' and 'beta'
-    [string]$TenantId = '', # Tenant Id if using the Application auth flow
-    [string]$ClientId = '', # App registration /client Id if using the Application auth flow
-    [string]$CertThumbprint = '', # Certificate thumbprint if using the Application auth flow with certificate authentication
-    [string]$ClientSecret = '', # Client Secret if using the Application auth flow with client secret
+    [string]$EndpointVersion = 'beta',
+    [string]$TenantId = '',
+    [string]$ClientId = '',
+    [string]$CertThumbprint = '',
+    [string]$ClientSecret = '',
 
     [ValidateSet('ApplicationCertificate', 'ApplicationClientSecret', 'Delegated')] 
-    [string]$AuthFlow = 'Delegated', # Valid authentication flows are 'ApplicationCertificate', 'ApplicationClientSecret' and 'Delegated'
+    [string]$AuthFlow = 'Delegated',
 
-    [string[]]$ReportingEndpointReportName = @(
-        'AllAppsList', # Found under Apps > All Apps
-        'AppInstallStatusAggregate', # Found under Apps > Monitor > App install status
-        'AppInvAggregate', # Found under Apps > Monitor > Discovered apps > Export
-        'AppInvRawData' # Found under Apps > Monitor > Discovered apps > Export 
-    ),
-    [string[]]$IntuneReportName = @(
-        'deviceManagement/detectedApps' # List detected apps and devices apps were found on - Requires DeviceManagementApps.Read.All, DeviceManagementManagedDevices.Read.All
-    )
+    [string[]]$ReportingEndpointReportName = @('AllAppsList','AppInstallStatusAggregate','AppInvAggregate','AppInvRawData'),
+    [string[]]$IntuneReportName = @('deviceManagement/detectedApps')
 )
 
 # Load necessary assembly for List<>
 Add-Type -AssemblyName System.Collections
 
-Install-Module -Name 'Microsoft.Graph.Authentication' -Scope CurrentUser -AllowClobber -ErrorAction SilentlyContinue
+# Ensure the save path directory exists
+if (-not (Test-Path -Path $SavePath -PathType Container)) {
+    try {
+        Write-Host "Save directory does not exist. Creating directory: $SavePath"
+        New-Item -Path $SavePath -ItemType Directory -Force -ErrorAction Stop | Out-Null
+        Write-Host "Successfully created directory: $SavePath" -ForegroundColor Green
+    }
+    catch {
+        Write-Error "Failed to create directory: $SavePath. Error: $_"
+        throw
+    }
+}
+else {
+    Write-Host "Save directory exists: $SavePath" -ForegroundColor Green
+}
+
+# Check if the required module is already installed
+if (-not (Get-Module -Name 'Microsoft.Graph.Authentication' -ListAvailable)) {
+    Write-Host "Microsoft.Graph.Authentication module not found. Installing..." -ForegroundColor Yellow
+
+    try {
+        Install-Module -Name 'Microsoft.Graph.Authentication' -Scope CurrentUser -AllowClobber -Force -ErrorAction Stop
+        Write-Host "Successfully installed Microsoft.Graph.Authentication module" -ForegroundColor Green
+    }
+    catch {
+        Write-Error "Failed to install Microsoft.Graph.Authentication module. Error: $_"
+        break
+    }
+}
+else {
+    Write-Host "Microsoft.Graph.Authentication module is already installed" -ForegroundColor Green
+}
+
 Write-Host 'Connecting to Microsoft Graph...'
 
 switch ($authFlow) {
