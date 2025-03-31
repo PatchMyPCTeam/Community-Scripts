@@ -27,12 +27,12 @@ function Get-AppRelationships {
         [string]$AppName,
         [int]$ParentDepth = 0,
         [int]$ChildDepth = 0,
-        [string]$RelationshipPath = ""
+        [string]$RelationshipPath = "",
+        [string]$RelationshipType = ""
     )
 
     $uniquePathKey = "$AppId|$RelationshipPath"
 
-    # Avoid repeated recursion down the same path
     if ($processedAppPaths.ContainsKey($uniquePathKey)) {
         return
     }
@@ -40,33 +40,33 @@ function Get-AppRelationships {
 
     if (-not $relationshipTree.ContainsKey($AppId)) {
         $relationshipTree[$AppId] = @{
-            AppId                = $AppId
-            AppName              = $AppName
-            Dependencies         = @()
-            DependentApps        = @()
-            SupersededBy         = @()
-            Supersedes           = @()
-            ParentDepth          = $ParentDepth
-            ChildDepth           = $ChildDepth
-            RelationshipPaths    = @($RelationshipPath)
+            AppId             = $AppId
+            AppName           = $AppName
+            Dependencies      = @()
+            DependentApps     = @()
+            SupersededBy      = @()
+            Supersedes        = @()
+            ParentDepth       = $ParentDepth
+            ChildDepth        = $ChildDepth
+            RelationshipPaths = @()
         }
-    }
-    else {
-        # Update depths if higher
+    } else {
         $relationshipTree[$AppId].ParentDepth = [Math]::Max($ParentDepth, $relationshipTree[$AppId].ParentDepth)
         $relationshipTree[$AppId].ChildDepth  = [Math]::Max($ChildDepth, $relationshipTree[$AppId].ChildDepth)
-        if (-not $relationshipTree[$AppId].RelationshipPaths.Contains($RelationshipPath)) {
-            $relationshipTree[$AppId].RelationshipPaths += $RelationshipPath
+    }
+
+    if ($RelationshipType -and $RelationshipPath) {
+        $fullPath = "$RelationshipPath -> [$RelationshipType] $AppName"
+        if (-not $relationshipTree[$AppId].RelationshipPaths.Contains($fullPath)) {
+            $relationshipTree[$AppId].RelationshipPaths += $fullPath
         }
     }
 
-    # Avoid repeated Graph requests for the same app
     if ($queriedAppRelationships.ContainsKey($AppId)) {
         return
     }
     $queriedAppRelationships[$AppId] = $true
 
-    # Get relationships from Graph (only once per AppId)
     $relationshipsUri = "https://graph.microsoft.com/beta/deviceAppManagement/mobileApps/$AppId/relationships"
     $relationshipsResponse = Invoke-MgGraphRequest -Uri $relationshipsUri -Method GET
 
@@ -89,9 +89,9 @@ function Get-AppRelationships {
                         -AppName $relatedApp.DisplayName `
                         -ParentDepth $ParentDepth `
                         -ChildDepth ($ChildDepth + 1) `
-                        -RelationshipPath ("$RelationshipPath -> $AppName")
-                }
-                elseif ($relationship.targetType -eq "parent") {
+                        -RelationshipPath ("$RelationshipPath -> [$RelationshipType] $AppName").Trim('-> ') `
+                        -RelationshipType "Dependency"
+                } elseif ($relationship.targetType -eq "parent") {
                     if (-not ($relationshipTree[$AppId].DependentApps | Where-Object Id -eq $relatedApp.Id)) {
                         $relationshipTree[$AppId].DependentApps += $relatedApp
                     }
@@ -100,7 +100,8 @@ function Get-AppRelationships {
                         -AppName $relatedApp.DisplayName `
                         -ParentDepth ($ParentDepth + 1) `
                         -ChildDepth $ChildDepth `
-                        -RelationshipPath ("$RelationshipPath -> $AppName")
+                        -RelationshipPath ("$RelationshipPath -> [$RelationshipType] $AppName").Trim('-> ') `
+                        -RelationshipType "Dependency"
                 }
             }
 
@@ -114,9 +115,9 @@ function Get-AppRelationships {
                         -AppName $relatedApp.DisplayName `
                         -ParentDepth ($ParentDepth + 1) `
                         -ChildDepth $ChildDepth `
-                        -RelationshipPath ("$RelationshipPath -> $AppName")
-                }
-                elseif ($relationship.targetType -eq "child") {
+                        -RelationshipPath ("$RelationshipPath -> [$RelationshipType] $AppName").Trim('-> ') `
+                        -RelationshipType "Supersedence"
+                } elseif ($relationship.targetType -eq "child") {
                     if (-not ($relationshipTree[$AppId].Supersedes | Where-Object Id -eq $relatedApp.Id)) {
                         $relationshipTree[$AppId].Supersedes += $relatedApp
                     }
@@ -125,7 +126,8 @@ function Get-AppRelationships {
                         -AppName $relatedApp.DisplayName `
                         -ParentDepth $ParentDepth `
                         -ChildDepth ($ChildDepth + 1) `
-                        -RelationshipPath ("$RelationshipPath -> $AppName")
+                        -RelationshipPath ("$RelationshipPath -> [$RelationshipType] $AppName").Trim('-> ') `
+                        -RelationshipType "Supersedence"
                 }
             }
         }
@@ -348,7 +350,14 @@ function Format-RelationshipTree {
             background-color: #2d2d2d;
         }
 
-        .path,
+        .path-dependency {
+        color: #00aaff;
+        }
+
+        .path-supersedence {
+        color: #ffaa00;
+        }
+
         .depth {
             font-size: 0.9em;
             color: #bbb;
@@ -462,13 +471,12 @@ function Format-RelationshipTree {
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     const sortRadios = document.querySelectorAll('input[name="sortOption"]');
-    const appCards = document.querySelectorAll('.app-card');
-    const appContainer = appCards[0].parentNode;
+    const appContainer = document.querySelector('body');
 
     function sortAndIndentCards() {
         const sortBy = document.querySelector('input[name="sortOption"]:checked').value;
+        const cardsArray = Array.from(document.querySelectorAll('.app-card'));
 
-        const cardsArray = Array.from(appCards);
         cardsArray.sort((a, b) => {
             const selector = sortBy === 'parent' ? '.parent-depth' : '.child-depth';
             const depthA = parseInt(a.querySelector(selector).textContent.replace(/\D/g, ''));
@@ -481,8 +489,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const depthValue = parseInt(card.querySelector(selector).textContent.replace(/\D/g, ''));
             const indentValue = depthValue * 25;
             card.style.marginLeft = `${indentValue}px`;
-            appContainer.appendChild(card);
         });
+
+        // Clear current cards from DOM and append sorted
+        cardsArray.forEach(card => appContainer.appendChild(card));
     }
 
     sortRadios.forEach(radio => {
@@ -541,14 +551,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if ($app.Dependencies.Count -gt 0) {
-            $html += "<div class='section-title'>🔗 Depends on:</div>"
+            $html += "<div class='section-title'>⤵️ Depends on:</div>"
             foreach ($item in $app.Dependencies) {
                 $html += "<div class='item'>🔵 $($item.DisplayName) $(if($item.Version){"v$($item.Version)"}) $(if($item.Publisher){"by $($item.Publisher)"})</div>"
             }
         }
         
         if ($app.DependentApps.Count -gt 0) {
-            $html += "<div class='section-title'>🔗 Dependency for:</div>"
+            $html += "<div class='section-title'>⤴️ Dependency for:</div>"
             foreach ($item in $app.DependentApps) {
                 $html += "<div class='item'>🟣 $($item.DisplayName) $(if($item.Version){"v$($item.Version)"}) $(if($item.Publisher){"by $($item.Publisher)"})</div>"
             }
