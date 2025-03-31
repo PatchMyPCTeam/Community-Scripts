@@ -10,29 +10,100 @@ param (
     [int]$MaxDepth = 10,
     
     [Parameter(Mandatory = $false)]
-    [ValidateNotNullOrEmpty()]
+    [ValidateScript({
+        if ([string]::IsNullOrEmpty($_) -or (Test-Path (Split-Path $_ -Parent) -PathType Container)) {
+            $true
+        }
+        else {
+            throw "Path '$_' is not valid or the directory does not exist"
+        }
+    })]
     [string]$OutputPath = "$env:TEMP\Win32AppRelationships.html"
 )
 
 $VerbosePreference = "Continue"
 
+# Initialize data structures
 $relationshipTree = @{}
 $processedApps = @{}
+$graphCache = @{}
 
+# Cached Graph API request function to improve performance
+function Invoke-CachedGraphRequest {
+    param (
+        [string]$Uri,
+        [string]$Method = "GET"
+    )
+    
+    # Check if token is about to expire and refresh if needed
+    $tokenExpiresOn = (Get-MgContext).ExpiresOn
+    if ($tokenExpiresOn -and $tokenExpiresOn -lt (Get-Date).AddMinutes(5)) {
+        Connect-MgGraph -Scopes "DeviceManagementApps.Read.All" -NoWelcome
+    }
+    
+    # Return cached response if available for GET requests
+    if ($Method -eq "GET" -and $graphCache.ContainsKey($Uri)) {
+        return $graphCache[$Uri]
+    }
+    
+    try {
+        $response = Invoke-MgGraphRequest -Uri $Uri -Method $Method
+        
+        # Cache GET responses
+        if ($Method -eq "GET") {
+            $graphCache[$Uri] = $response
+        }
+        
+        return $response
+    }
+    catch {
+        throw $_
+    }
+}
+
+# Function to get apps from Graph API
+function Get-GraphApps {
+    param (
+        [string]$Filter = "",
+        [string]$Select = "id,displayName,publisher"
+    )
+    
+    $uri = "https://graph.microsoft.com/beta/deviceAppManagement/mobileApps?`$select=$Select"
+    if (-not [string]::IsNullOrEmpty($Filter)) {
+        $escapedFilter = [uri]::EscapeDataString($Filter)
+        $uri += "&`$filter=$escapedFilter"
+    }
+    
+    try {
+        $response = Invoke-CachedGraphRequest -Uri $uri
+        return $response
+    }
+    catch {
+        return $null
+    }
+}
+
+# Improved recursive function to get app relationships with circular dependency handling
 function Get-AppRelationships {
     param (
         [string]$AppId,
         [string]$AppName,
-        [int]$CurrentDepth = 0
+        [int]$CurrentDepth = 0,
+        [hashtable]$VisitedApps = @{}
     )
 
-    # Stop if we've already processed this app or reached max depth
-    if ($processedApps.ContainsKey($AppId) -or $CurrentDepth -gt $MaxDepth) {
+    # Stop if we've already processed this app at a shallower or equal depth
+    if ($VisitedApps.ContainsKey($AppId) -and $VisitedApps[$AppId] -le $CurrentDepth) {
         return
     }
+    
+    # Stop if we've reached max depth
+    if ($CurrentDepth -gt $MaxDepth) {
+        return
+    }
+    
+    $VisitedApps[$AppId] = $CurrentDepth
     $processedApps[$AppId] = $true
-
-    Write-Verbose "Processing app: $AppName (Depth: $CurrentDepth)"
 
     # Initialize the app in the relationship tree if it doesn't exist
     if (-not $relationshipTree.ContainsKey($AppId)) {
@@ -47,139 +118,163 @@ function Get-AppRelationships {
     }
 
     # Get the app's relationships from Graph API
-    Write-Verbose "Getting relationships for $AppName"
-    $relationshipsUri = "https://graph.microsoft.com/beta/deviceAppManagement/mobileApps/$AppId/relationships"
-    $relationshipsResponse = Invoke-MgGraphRequest -Uri $relationshipsUri -Method GET
-
-    foreach ($relationship in $relationshipsResponse.value) {
-        $relatedApp = @{
-            Id          = $relationship.targetId
-            DisplayName = $relationship.targetDisplayName
-            Version     = $relationship.targetDisplayVersion
-            Publisher   = $relationship.targetPublisherDisplayName
-        }
-
-        switch ($relationship."@odata.type") {
-            "#microsoft.graph.mobileAppDependency" {
-                if ($relationship.targetType -eq "child") {
-                    # This app depends on the target
-                    if (-not ($relationshipTree[$AppId].Dependencies | Where-Object Id -eq $relatedApp.Id)) {
-                        $relationshipTree[$AppId].Dependencies += $relatedApp
-                        Write-Verbose "$AppName depends on $($relatedApp.DisplayName)"
-                    }
-                    # Recurse to the dependency
-                    Get-AppRelationships -AppId $relatedApp.Id -AppName $relatedApp.DisplayName -CurrentDepth ($CurrentDepth + 1)
-                }
-                elseif ($relationship.targetType -eq "parent") {
-                    # Target depends on this app
-                    if (-not ($relationshipTree[$AppId].DependentApps | Where-Object Id -eq $relatedApp.Id)) {
-                        $relationshipTree[$AppId].DependentApps += $relatedApp
-                        Write-Verbose "$($relatedApp.DisplayName) depends on $AppName"
-                    }
-                    # Recurse to the dependent app
-                    Get-AppRelationships -AppId $relatedApp.Id -AppName $relatedApp.DisplayName -CurrentDepth ($CurrentDepth + 1)
-                }
-            }
-            "#microsoft.graph.mobileAppSupersedence" {
-                if ($relationship.targetType -eq "parent") {
-                    # This app is superseded by the target
-                    if (-not ($relationshipTree[$AppId].SupersededBy | Where-Object Id -eq $relatedApp.Id)) {
-                        $relationshipTree[$AppId].SupersededBy += $relatedApp
-                        Write-Verbose "$AppName is superseded by $($relatedApp.DisplayName)"
-                    }
-                    # Recurse to the superseding app
-                    Get-AppRelationships -AppId $relatedApp.Id -AppName $relatedApp.DisplayName -CurrentDepth ($CurrentDepth + 1)
-                }
-                elseif ($relationship.targetType -eq "child") {
-                    # This app supersedes the target
-                    if (-not ($relationshipTree[$AppId].Supersedes | Where-Object Id -eq $relatedApp.Id)) {
-                        $relationshipTree[$AppId].Supersedes += $relatedApp
-                        Write-Verbose "$AppName supersedes $($relatedApp.DisplayName)"
-                    }
-                    # Recurse to the superseded app
-                    Get-AppRelationships -AppId $relatedApp.Id -AppName $relatedApp.DisplayName -CurrentDepth ($CurrentDepth + 1)
-                }
-            }
-        }
-    }
-}
-
-# Graph Connection
-try {
-    Write-Verbose "Checking Microsoft Graph connection..."
-    $graphContext = Get-MgContext
-    if (-not $graphContext) {
-        Write-Verbose "Not connected to Microsoft Graph. Attempting to connect..."
-        try {
-            Connect-MgGraph -Scopes "DeviceManagementApps.Read.All" -NoWelcome
-            Write-Verbose "Successfully connected to Microsoft Graph."
-        }
-        catch {
-            Write-Error "Failed to connect to Microsoft Graph: $_"
-            return
-        }
-    }
-    else {
-        Write-Verbose "Already connected to Microsoft Graph."
-    }
-}
-catch {
-    Write-Error "Error checking Microsoft Graph connection: $_"
-    return
-}
-
-# Get all apps or specified app
-if ($AllApps) {
+    Write-Log "Getting relationships for $AppName" -Level "INFO"
     try {
-        Write-Verbose "Retrieving all apps from Microsoft Graph..."
-        $uri = "https://graph.microsoft.com/beta/deviceAppManagement/mobileApps?`$select=id,displayName,publisher"
-        $appsResponse = Invoke-MgGraphRequest -Uri $uri -Method GET
+        $relationshipsUri = "https://graph.microsoft.com/beta/deviceAppManagement/mobileApps/$AppId/relationships"
+        $relationshipsResponse = Invoke-CachedGraphRequest -Uri $relationshipsUri
         
-        if ($appsResponse.value.Count -eq 0) {
-            Write-Error "No apps found in the tenant."
-            return
-        }
-        
-        foreach ($app in $appsResponse.value) {
-            Write-Verbose "Processing app: $($app.displayName)"
-            Get-AppRelationships -AppId $app.id -AppName $app.displayName
+        foreach ($relationship in $relationshipsResponse.value) {
+            $relatedApp = @{
+                Id          = $relationship.targetId
+                DisplayName = $relationship.targetDisplayName
+                Version     = $relationship.targetDisplayVersion
+                Publisher   = $relationship.targetPublisherDisplayName
+            }
+
+            switch ($relationship."@odata.type") {
+                "#microsoft.graph.mobileAppDependency" {
+                    if ($relationship.targetType -eq "child") {
+
+                        # This app depends on the target
+                        if (-not ($relationshipTree[$AppId].Dependencies | Where-Object Id -eq $relatedApp.Id)) {
+                            $relationshipTree[$AppId].Dependencies += $relatedApp
+                        }
+                        # Recurse to the dependency
+                        Get-AppRelationships -AppId $relatedApp.Id -AppName $relatedApp.DisplayName -CurrentDepth ($CurrentDepth + 1) -VisitedApps $VisitedApps
+                    }
+                    elseif ($relationship.targetType -eq "parent") {
+
+                        # Target depends on this app
+                        if (-not ($relationshipTree[$AppId].DependentApps | Where-Object Id -eq $relatedApp.Id)) {
+                            $relationshipTree[$AppId].DependentApps += $relatedApp
+                        }
+                        # Recurse to the dependent app
+                        Get-AppRelationships -AppId $relatedApp.Id -AppName $relatedApp.DisplayName -CurrentDepth ($CurrentDepth + 1) -VisitedApps $VisitedApps
+                    }
+                }
+                "#microsoft.graph.mobileAppSupersedence" {
+                    if ($relationship.targetType -eq "parent") {
+
+                        # This app is superseded by the target
+                        if (-not ($relationshipTree[$AppId].SupersededBy | Where-Object Id -eq $relatedApp.Id)) {
+                            $relationshipTree[$AppId].SupersededBy += $relatedApp
+                        }
+                        # Recurse to the superseding app
+                        Get-AppRelationships -AppId $relatedApp.Id -AppName $relatedApp.DisplayName -CurrentDepth ($CurrentDepth + 1) -VisitedApps $VisitedApps
+                    }
+                    elseif ($relationship.targetType -eq "child") {
+
+                        # This app supersedes the target
+                        if (-not ($relationshipTree[$AppId].Supersedes | Where-Object Id -eq $relatedApp.Id)) {
+                            $relationshipTree[$AppId].Supersedes += $relatedApp
+                        }
+                        # Recurse to the superseded app
+                        Get-AppRelationships -AppId $relatedApp.Id -AppName $relatedApp.DisplayName -CurrentDepth ($CurrentDepth + 1) -VisitedApps $VisitedApps
+                    }
+                }
+            }
         }
     }
     catch {
-        Write-Error "Error retrieving all apps: $_"
-        return
     }
 }
-elseif (-not [string]::IsNullOrEmpty($AppName)) {
+
+# Connect to Microsoft Graph with improved error handling
+function Connect-ToMicrosoftGraph {
     try {
-        Write-Verbose "Searching for app by name: '$AppName'"
-        $escapedFilter = [uri]::EscapeDataString("displayName eq '$AppName'")
-        $uri = "https://graph.microsoft.com/beta/deviceAppManagement/mobileApps?`$filter=$escapedFilter&`$select=id,displayName,publisher"           
-        $appResponse = Invoke-MgGraphRequest -Uri $uri -Method GET
+        Write-Log "Checking Microsoft Graph connection..." -Level "INFO"
+        $graphContext = Get-MgContext
+        if (-not $graphContext) {
+            try {
+                Connect-MgGraph -Scopes "DeviceManagementApps.Read.All" -NoWelcome
+            }
+            catch {
+                throw $_
+            }
+        }
+        else {
+            
+            # Check if token is about to expire
+            if ($graphContext.ExpiresOn -and $graphContext.ExpiresOn -lt (Get-Date).AddMinutes(5)) {
+                Connect-MgGraph -Scopes "DeviceManagementApps.Read.All" -NoWelcome
+            }
+        }
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+# Process all apps with better error handling and progress reporting
+function Process-AllApps {
+    try {
+        $appsResponse = Get-GraphApps
+        
+        if ($appsResponse.value.Count -eq 0) {
+            return $false
+        }
+        
+        # Setup progress bar
+        $progressParams = @{
+            Activity = "Processing applications"
+            Status = "0% Complete"
+            PercentComplete = 0
+        }
+        
+        $totalApps = $appsResponse.value.Count
+        $currentApp = 0
+        
+        foreach ($app in $appsResponse.value) {
+            $currentApp++
+            $progressParams.Status = "Processing $($app.displayName) ($currentApp of $totalApps)"
+            $progressParams.PercentComplete = ($currentApp / $totalApps) * 100
+            Write-Progress @progressParams
+            
+            Get-AppRelationships -AppId $app.id -AppName $app.displayName -VisitedApps @{}
+        }
+        
+        Write-Progress -Activity "Processing applications" -Completed
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+# Process a specific app by name
+function Process-AppByName {
+    param (
+        [string]$Name
+    )
+    
+    try {
+        Write-Log "Searching for app by name: '$Name'" -Level "INFO"
+        $escapedFilter = [uri]::EscapeDataString("displayName eq '$Name'")
+        $appResponse = Get-GraphApps -Filter "displayName eq '$Name'"
         
         if ($appResponse.value.Count -eq 0) {
-            Write-Error "No app found with name: $AppName"
-            return
+            Write-Log "No app found with name: $Name" -Level "ERROR"
+            return $false
         }
         
         $app = $appResponse.value[0]
-        Write-Verbose "Found app: $($app.displayName)"
-        Get-AppRelationships -AppId $app.id -AppName $app.displayName
+        Get-AppRelationships -AppId $app.id -AppName $app.displayName -VisitedApps @{}
+        return $true
     }
     catch {
-        Write-Error "Error finding app by name: $_"
-        return
+        Write-Log "Error finding app by name: $_" -Level "ERROR"
+        return $false
     }
 }
-else {
+
+# Process app selection via GridView
+function Process-AppSelection {
     try {
-        Write-Verbose "Retrieving list of apps from Microsoft Graph for selection..."
-        $uri = "https://graph.microsoft.com/beta/deviceAppManagement/mobileApps?`$select=id,displayName,publisher"
-        $appsResponse = Invoke-MgGraphRequest -Uri $uri -Method GET
+        $appsResponse = Get-GraphApps
         
         if ($appsResponse.value.Count -eq 0) {
-            Write-Error "No apps found in the tenant."
-            return
+            return $false
         }
         
         $appsForSelection = $appsResponse.value | ForEach-Object {
@@ -190,25 +285,19 @@ else {
             }
         }
         
-        Write-Verbose "Displaying app selection grid view..."
         $selectedApp = $appsForSelection | Out-GridView -Title "Select an app to view complete relationship tree" -OutputMode Single
         
         if ($null -eq $selectedApp) {
-            Write-Warning "No app selected. Operation cancelled."
-            return
+            return $false
         }
         
-        Write-Verbose "Selected app: $($selectedApp.DisplayName)"
-        Get-AppRelationships -AppId $selectedApp.Id -AppName $selectedApp.DisplayName
+        Get-AppRelationships -AppId $selectedApp.Id -AppName $selectedApp.DisplayName -VisitedApps @{}
+        return $true
     }
     catch {
-        Write-Error "Error retrieving apps for selection: $_"
-        return
+        return $false
     }
 }
-
-# Display the relationship tree
-Write-Verbose "Generating relationship tree report..."
 
 # Create a visual tree representation
 function Format-RelationshipTree {
@@ -227,8 +316,7 @@ function Format-RelationshipTree {
             $_.Supersedes.Count -gt 0 
         }).Count
 
-    $html =
-    @"
+    $html = @"
 <!DOCTYPE html>
 <html lang="en">
 
@@ -237,40 +325,46 @@ function Format-RelationshipTree {
     <title>Intune Win32 App Relationships</title>
     <style>
         body {
-            font-family: 'Segoe UI', Arial, sans-serif;
-            margin: 0;
-            padding: 20px;
-            background-color: #1e1e1e;
-            color: #f0f0f0;
+        font-family: 'Segoe UI', Arial, sans-serif;
+        margin: 0;
+        padding: 20px;
+        background-color: #1e1e1e;
+        color: #f0f0f0;
         }
 
         .header {
-            display: flex;
-            align-items: center;
-            margin-bottom: 30px;
+        display: flex;
+        align-items: center;
+        margin-bottom: 30px;
         }
 
-        h1,
-        h2 {
+        .css-97v30w > .logoBtn {
+        display: flex;
+        -webkit-box-align: center;
+        align-items: center;
+        gap: 10px;
+        overflow: hidden;
+        color: rgb(27, 188, 155);
+        width: 100%;
+        }
+
+        .css-97v30w .logo {
+        flex-shrink: 0;
+        }
+
+        button {
+        cursor: pointer;
+        background-color: transparent;
+        border: none;
+        padding: 0px;
+        font-family: inherit;
+        color: inherit;
+        line-height: inherit;
+        }
+
+        h1, h2 {
             color: #1BBC9B;
             font-weight: 500;
-        }
-
-        .logoBtn {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 10px 20px;
-            background-color: transparent;
-            border: none;
-            cursor: default;
-        }
-
-        .logo {
-            max-height: 60px;
-            height: auto;
-            object-fit: contain;
-            border-radius: 6px;
         }
 
         .summary {
@@ -491,10 +585,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 </script>
-"@
-
-    $html += @"
-    <div class='css-97v30w'>
+<div class='css-97v30w'>
         <button type="button" class="logoBtn"><svg width="38" height="38" viewBox="0 0 38 38" fill="none"
                 xmlns="http://www.w3.org/2000/svg" class="logo">
                 <g clip-path="url(#clip0_1301_19104)">
@@ -601,25 +692,29 @@ document.addEventListener('DOMContentLoaded', () => {
         if ($app.SupersededBy.Count -gt 0) {
             $html += "<div class='section-title'>⬅️ Superseded By:</div>"
             foreach ($item in $app.SupersededBy) {
-                $html += "<div class='item'><a class='app-link' data-app-id='$($item.Id)'>$($item.DisplayName) $(if($item.Version){"v$($item.Version)"})</a></div>"            }
+                $html += "<div class='item'><a class='app-link' data-app-id='$($item.Id)'>$($item.DisplayName) $(if($item.Version){"v$($item.Version)"})</a></div>"
+            }
         }
 
         if ($app.Supersedes.Count -gt 0) {
             $html += "<div class='section-title'>➡️ Supersedes:</div>"
             foreach ($item in $app.Supersedes) {
-                $html += "<div class='item'><a class='app-link' data-app-id='$($item.Id)'>$($item.DisplayName) $(if($item.Version){"v$($item.Version)"})</a></div>"            }
+                $html += "<div class='item'><a class='app-link' data-app-id='$($item.Id)'>$($item.DisplayName) $(if($item.Version){"v$($item.Version)"})</a></div>"
+            }
         }
 
         if ($app.Dependencies.Count -gt 0) {
             $html += "<div class='section-title'>⤵️ Depends on:</div>"
             foreach ($item in $app.Dependencies) {
-                $html += "<div class='item'><a class='app-link' data-app-id='$($item.Id)'>$($item.DisplayName) $(if($item.Version){"v$($item.Version)"})</a></div>"            }
+                $html += "<div class='item'><a class='app-link' data-app-id='$($item.Id)'>$($item.DisplayName) $(if($item.Version){"v$($item.Version)"})</a></div>"
+            }
         }
 
         if ($app.DependentApps.Count -gt 0) {
             $html += "<div class='section-title'>⤴️ Dependency for:</div>"
             foreach ($item in $app.DependentApps) {
-                $html += "<div class='item'><a class='app-link' data-app-id='$($item.Id)'>$($item.DisplayName) $(if($item.Version){"v$($item.Version)"})</a></div>"            }
+                $html += "<div class='item'><a class='app-link' data-app-id='$($item.Id)'>$($item.DisplayName) $(if($item.Version){"v$($item.Version)"})</a></div>"
+            }
         }
 
         $html += "</div>"  # closes .app-card
@@ -627,19 +722,52 @@ document.addEventListener('DOMContentLoaded', () => {
 
     $html += "</div>"  # closes #appGrid grid-container
 
-    $html += 
-    @"
+    # Add navigation controls
+    $html += @"
+<div class="navigation-controls">
+    <button id="backToTop" class="nav-button" title="Back to Top">↑</button>
+</div>
 </body>
 </html>
 "@
 
+    try {
         $html | Out-File -FilePath $OutputPath -Encoding UTF8
         Write-Host "Relationship tree report saved to: $OutputPath" -ForegroundColor Green
         Invoke-Item $OutputPath
     }
+    catch {
+        Write-Error "Error saving report: $_"
+    }
+}
 
-    # Generate the visual report
-    Format-RelationshipTree -Tree $relationshipTree -OutputPath $OutputPath
+# Main script execution flow
+Write-Log "Starting Win32 App Relationship analysis script" -Level "INFO"
 
-    # Return the raw data as well
-    return $relationshipTree
+# Connect to Microsoft Graph
+if (-not (Connect-ToMicrosoftGraph)) {
+    exit 1
+}
+
+# Process apps based on input parameters
+$success = $false
+
+if ($AllApps) {
+    $success = Process-AllApps
+}
+elseif (-not [string]::IsNullOrEmpty($AppName)) {
+    $success = Process-AppByName -Name $AppName
+}
+else {
+    $success = Process-AppSelection
+}
+
+if (-not $success) {
+    exit 1
+}
+
+# Generate the visual report
+Format-RelationshipTree -Tree $relationshipTree -OutputPath $OutputPath
+
+# Return the raw data as well
+return $relationshipTree
