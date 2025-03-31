@@ -16,57 +16,38 @@ param (
 
 $VerbosePreference = "Continue"
 
-
 $relationshipTree = @{}
-$processedAppPaths = @{}
-$queriedAppRelationships = @{}
+$processedApps = @{}
 
 function Get-AppRelationships {
     param (
         [string]$AppId,
         [string]$AppName,
-        [int]$ParentDepth = 0,
-        [int]$ChildDepth = 0,
-        [string]$RelationshipPath = "",
-        [string]$RelationshipType = ""
+        [int]$CurrentDepth = 0
     )
 
-    $uniquePathKey = "$AppId|$RelationshipPath"
-
-    if ($processedAppPaths.ContainsKey($uniquePathKey)) {
+    # Stop if we've already processed this app or reached max depth
+    if ($processedApps.ContainsKey($AppId) -or $CurrentDepth -gt $MaxDepth) {
         return
     }
-    $processedAppPaths[$uniquePathKey] = $true
+    $processedApps[$AppId] = $true
 
+    Write-Verbose "Processing app: $AppName (Depth: $CurrentDepth)"
+
+    # Initialize the app in the relationship tree if it doesn't exist
     if (-not $relationshipTree.ContainsKey($AppId)) {
         $relationshipTree[$AppId] = @{
-            AppId             = $AppId
-            AppName           = $AppName
-            Dependencies      = @()
-            DependentApps     = @()
-            SupersededBy      = @()
-            Supersedes        = @()
-            ParentDepth       = $ParentDepth
-            ChildDepth        = $ChildDepth
-            RelationshipPaths = @()
-        }
-    } else {
-        $relationshipTree[$AppId].ParentDepth = [Math]::Max($ParentDepth, $relationshipTree[$AppId].ParentDepth)
-        $relationshipTree[$AppId].ChildDepth  = [Math]::Max($ChildDepth, $relationshipTree[$AppId].ChildDepth)
-    }
-
-    if ($RelationshipType -and $RelationshipPath) {
-        $fullPath = "$RelationshipPath -> [$RelationshipType] $AppName"
-        if (-not $relationshipTree[$AppId].RelationshipPaths.Contains($fullPath)) {
-            $relationshipTree[$AppId].RelationshipPaths += $fullPath
+            AppId         = $AppId
+            AppName       = $AppName
+            Dependencies  = @()
+            DependentApps = @()
+            SupersededBy  = @()
+            Supersedes    = @()
         }
     }
 
-    if ($queriedAppRelationships.ContainsKey($AppId)) {
-        return
-    }
-    $queriedAppRelationships[$AppId] = $true
-
+    # Get the app's relationships from Graph API
+    Write-Verbose "Getting relationships for $AppName"
     $relationshipsUri = "https://graph.microsoft.com/beta/deviceAppManagement/mobileApps/$AppId/relationships"
     $relationshipsResponse = Invoke-MgGraphRequest -Uri $relationshipsUri -Method GET
 
@@ -81,60 +62,49 @@ function Get-AppRelationships {
         switch ($relationship."@odata.type") {
             "#microsoft.graph.mobileAppDependency" {
                 if ($relationship.targetType -eq "child") {
+                    # This app depends on the target
                     if (-not ($relationshipTree[$AppId].Dependencies | Where-Object Id -eq $relatedApp.Id)) {
                         $relationshipTree[$AppId].Dependencies += $relatedApp
+                        Write-Verbose "$AppName depends on $($relatedApp.DisplayName)"
                     }
-                    Get-AppRelationships `
-                        -AppId $relatedApp.Id `
-                        -AppName $relatedApp.DisplayName `
-                        -ParentDepth $ParentDepth `
-                        -ChildDepth ($ChildDepth + 1) `
-                        -RelationshipPath ("$RelationshipPath -> [$RelationshipType] $AppName").Trim('-> ') `
-                        -RelationshipType "Dependency"
-                } elseif ($relationship.targetType -eq "parent") {
+                    # Recurse to the dependency
+                    Get-AppRelationships -AppId $relatedApp.Id -AppName $relatedApp.DisplayName -CurrentDepth ($CurrentDepth + 1)
+                }
+                elseif ($relationship.targetType -eq "parent") {
+                    # Target depends on this app
                     if (-not ($relationshipTree[$AppId].DependentApps | Where-Object Id -eq $relatedApp.Id)) {
                         $relationshipTree[$AppId].DependentApps += $relatedApp
+                        Write-Verbose "$($relatedApp.DisplayName) depends on $AppName"
                     }
-                    Get-AppRelationships `
-                        -AppId $relatedApp.Id `
-                        -AppName $relatedApp.DisplayName `
-                        -ParentDepth ($ParentDepth + 1) `
-                        -ChildDepth $ChildDepth `
-                        -RelationshipPath ("$RelationshipPath -> [$RelationshipType] $AppName").Trim('-> ') `
-                        -RelationshipType "Dependency"
+                    # Recurse to the dependent app
+                    Get-AppRelationships -AppId $relatedApp.Id -AppName $relatedApp.DisplayName -CurrentDepth ($CurrentDepth + 1)
                 }
             }
-
             "#microsoft.graph.mobileAppSupersedence" {
                 if ($relationship.targetType -eq "parent") {
+                    # This app is superseded by the target
                     if (-not ($relationshipTree[$AppId].SupersededBy | Where-Object Id -eq $relatedApp.Id)) {
                         $relationshipTree[$AppId].SupersededBy += $relatedApp
+                        Write-Verbose "$AppName is superseded by $($relatedApp.DisplayName)"
                     }
-                    Get-AppRelationships `
-                        -AppId $relatedApp.Id `
-                        -AppName $relatedApp.DisplayName `
-                        -ParentDepth ($ParentDepth + 1) `
-                        -ChildDepth $ChildDepth `
-                        -RelationshipPath ("$RelationshipPath -> [$RelationshipType] $AppName").Trim('-> ') `
-                        -RelationshipType "Supersedence"
-                } elseif ($relationship.targetType -eq "child") {
+                    # Recurse to the superseding app
+                    Get-AppRelationships -AppId $relatedApp.Id -AppName $relatedApp.DisplayName -CurrentDepth ($CurrentDepth + 1)
+                }
+                elseif ($relationship.targetType -eq "child") {
+                    # This app supersedes the target
                     if (-not ($relationshipTree[$AppId].Supersedes | Where-Object Id -eq $relatedApp.Id)) {
                         $relationshipTree[$AppId].Supersedes += $relatedApp
+                        Write-Verbose "$AppName supersedes $($relatedApp.DisplayName)"
                     }
-                    Get-AppRelationships `
-                        -AppId $relatedApp.Id `
-                        -AppName $relatedApp.DisplayName `
-                        -ParentDepth $ParentDepth `
-                        -ChildDepth ($ChildDepth + 1) `
-                        -RelationshipPath ("$RelationshipPath -> [$RelationshipType] $AppName").Trim('-> ') `
-                        -RelationshipType "Supersedence"
+                    # Recurse to the superseded app
+                    Get-AppRelationships -AppId $relatedApp.Id -AppName $relatedApp.DisplayName -CurrentDepth ($CurrentDepth + 1)
                 }
             }
         }
     }
 }
 
-# Ensure Graph Connection
+# Graph Connection
 try {
     Write-Verbose "Checking Microsoft Graph connection..."
     $graphContext = Get-MgContext
@@ -183,7 +153,8 @@ if ($AllApps) {
 elseif (-not [string]::IsNullOrEmpty($AppName)) {
     try {
         Write-Verbose "Searching for app by name: '$AppName'"
-        $uri = "https://graph.microsoft.com/beta/deviceAppManagement/mobileApps?`$filter=displayName eq '$AppName'&`$select=id,displayName,publisher,displayVersion"
+        $escapedFilter = [uri]::EscapeDataString("displayName eq '$AppName'")
+        $uri = "https://graph.microsoft.com/beta/deviceAppManagement/mobileApps?`$filter=$escapedFilter&`$select=id,displayName,publisher"           
         $appResponse = Invoke-MgGraphRequest -Uri $uri -Method GET
         
         if ($appResponse.value.Count -eq 0) {
@@ -263,7 +234,7 @@ function Format-RelationshipTree {
 
 <head>
     <meta charset="UTF-8">
-    <title>Intune App Relationship Tree</title>
+    <title>Intune Win32 App Relationships</title>
     <style>
         body {
             font-family: 'Segoe UI', Arial, sans-serif;
@@ -279,34 +250,27 @@ function Format-RelationshipTree {
             margin-bottom: 30px;
         }
 
-        .css-97v30w>.logoBtn {
-            display: flex;
-            -webkit-box-align: center;
-            align-items: center;
-            gap: 10px;
-            overflow: hidden;
-            color: rgb(27, 188, 155);
-            width: 100%;
-        }
-
-        .css-97v30w .logo {
-            flex-shrink: 0;
-        }
-
-        button {
-            cursor: pointer;
-            background-color: transparent;
-            border: none;
-            padding: 0px;
-            font-family: inherit;
-            color: inherit;
-            line-height: inherit;
-        }
-
         h1,
         h2 {
             color: #1BBC9B;
             font-weight: 500;
+        }
+
+        .logoBtn {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 20px;
+            background-color: transparent;
+            border: none;
+            cursor: default;
+        }
+
+        .logo {
+            max-height: 60px;
+            height: auto;
+            object-fit: contain;
+            border-radius: 6px;
         }
 
         .summary {
@@ -328,6 +292,7 @@ function Format-RelationshipTree {
             border-radius: 8px;
             margin-bottom: 15px;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            scroll-margin-top: 20px; /* Ensures proper scrolling when navigating to the card */
         }
 
         .section-title {
@@ -350,52 +315,185 @@ function Format-RelationshipTree {
             background-color: #2d2d2d;
         }
 
-        .path-dependency {
-        color: #00aaff;
+        .grid-container {
+            display: grid;
+            gap: 20px;
         }
 
-        .path-supersedence {
-        color: #ffaa00;
+        .grid-cols-1 {
+            grid-template-columns: repeat(1, 1fr);
         }
 
-        .depth {
-            font-size: 0.9em;
-            color: #bbb;
-            margin-top: 5px;
+        .grid-cols-2 {
+            grid-template-columns: repeat(2, 1fr);
         }
 
-        .icon {
-            vertical-align: middle;
-            width: 20px;
-            height: 20px;
-            margin-right: 5px;
+        .grid-cols-3 {
+            grid-template-columns: repeat(3, 1fr);
         }
 
-        .sort-options {
-        background-color: #252525;
-        padding: 10px;
-        border-radius: 8px;
-        margin-bottom: 15px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        .grid-cols-4 {
+            grid-template-columns: repeat(4, 1fr);
         }
 
-        .sort-options label {
-        cursor: pointer;
-        margin-right: 15px;
-        color: #1BBC9B;
+        .grid-options {
+            background-color: #252525;
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            color: #1BBC9B;
         }
-    
-        .indent-level-0 { margin-left: 0px; }
-        .indent-level-1 { margin-left: 25px; }
-        .indent-level-2 { margin-left: 50px; }
-        .indent-level-3 { margin-left: 75px; }
-        .indent-level-4 { margin-left: 100px; }
+        
+        .app-link {
+            color: #4da6ff;
+            cursor: pointer;
+            text-decoration: underline;
+        }
+        
+        .app-link:hover {
+            color: #80c1ff;
+        }
+        
+        /* Tooltip styles */
+        .tooltip {
+            position: relative;
+            display: inline-block;
+        }
+        
+        .tooltip .tooltiptext {
+            visibility: hidden;
+            width: auto;
+            min-width: 120px;
+            background-color: #555;
+            color: #fff;
+            text-align: center;
+            border-radius: 6px;
+            padding: 5px 10px;
+            position: absolute;
+            z-index: 1;
+            bottom: 125%;
+            left: 50%;
+            transform: translateX(-50%);
+            opacity: 0;
+            transition: opacity 0.3s;
+            font-size: 12px;
+            white-space: nowrap;
+        }
+        
+        .tooltip:hover .tooltiptext {
+            visibility: visible;
+            opacity: 1;
+        }
+        
+        /* Navigation controls */
+        .navigation-controls {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background-color: #1d1d1d;
+            border-radius: 50%;
+            padding: 15px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .nav-button {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background-color: #1BBC9B;
+            color: #fff;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 18px;
+            transition: background-color 0.2s;
+        }
+        
+        .nav-button:hover {
+            background-color: #139b7f;
+        }
     </style>
 "@
 
-    # Add logo
-    $html += 
-    @"
+    # Add JavaScript for grid layout and app navigation
+    $html += @"
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const gridSizeSelect = document.getElementById('gridSize');
+    const appGrid = document.getElementById('appGrid');
+    const appCards = {};
+    
+    // Store references to all app cards by app ID for easier navigation
+    document.querySelectorAll('.app-card').forEach(card => {
+        const appId = card.getAttribute('data-app-id');
+        if (appId) {
+            appCards[appId] = card;
+            
+            // Add ID for direct linking
+            card.id = 'app-' + appId;
+        }
+    });
+    
+    // Setup app link navigation
+    document.querySelectorAll('.app-link').forEach(link => {
+        link.addEventListener('click', (e) => {
+            const targetAppId = link.getAttribute('data-app-id');
+            navigateToApp(targetAppId);
+        });
+    });
+    
+    // Setup grid column layout
+    function updateGridColumns() {
+        const cols = gridSizeSelect.value;
+        appGrid.className = 'grid-container grid-cols-' + cols;
+    }
+    
+    gridSizeSelect.addEventListener('change', updateGridColumns);
+    
+    // Navigation function - scrolls to the app card when link is clicked
+    window.navigateToApp = function(appId) {
+        const targetCard = document.getElementById('app-' + appId);
+        if (targetCard) {
+            targetCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            
+            // Flash effect to highlight the card
+            targetCard.style.transition = 'background-color 0.5s';
+            targetCard.style.backgroundColor = '#3a5d56';
+            
+            setTimeout(() => {
+                targetCard.style.backgroundColor = '#2d2d2d';
+                setTimeout(() => {
+                    targetCard.style.transition = '';
+                }, 1000);
+            }, 1000);
+        }
+    };
+    
+    // Back to top functionality
+    document.getElementById('backToTop').addEventListener('click', () => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+    
+    // Initialize
+    updateGridColumns();
+    
+    // Handle hash navigation if present
+    if (window.location.hash) {
+        const appId = window.location.hash.substring(5); // Remove "#app-"
+        setTimeout(() => navigateToApp(appId), 300);
+    }
+});
+</script>
+"@
+
+    $html += @"
     <div class='css-97v30w'>
         <button type="button" class="logoBtn"><svg width="38" height="38" viewBox="0 0 38 38" fill="none"
                 xmlns="http://www.w3.org/2000/svg" class="logo">
@@ -468,104 +566,66 @@ function Format-RelationshipTree {
             </svg></button>
     </div>
 </head>
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-    const sortRadios = document.querySelectorAll('input[name="sortOption"]');
-    const appContainer = document.querySelector('body');
-
-    function sortAndIndentCards() {
-        const sortBy = document.querySelector('input[name="sortOption"]:checked').value;
-        const cardsArray = Array.from(document.querySelectorAll('.app-card'));
-
-        cardsArray.sort((a, b) => {
-            const selector = sortBy === 'parent' ? '.parent-depth' : '.child-depth';
-            const depthA = parseInt(a.querySelector(selector).textContent.replace(/\D/g, ''));
-            const depthB = parseInt(b.querySelector(selector).textContent.replace(/\D/g, ''));
-            return depthA - depthB;
-        });
-
-        cardsArray.forEach(card => {
-            const selector = sortBy === 'parent' ? '.parent-depth' : '.child-depth';
-            const depthValue = parseInt(card.querySelector(selector).textContent.replace(/\D/g, ''));
-            const indentValue = depthValue * 25;
-            card.style.marginLeft = `${indentValue}px`;
-        });
-
-        // Clear current cards from DOM and append sorted
-        cardsArray.forEach(card => appContainer.appendChild(card));
-    }
-
-    sortRadios.forEach(radio => {
-        radio.addEventListener('change', sortAndIndentCards);
-    });
-
-    sortAndIndentCards();
-});
-</script>
 <body>
-    <h1>Intune App Relationship Tree</h1>
+    <h1>Win32 App Relationships</h1>
     <div class="summary">
         <h2>Summary</h2>
         <p>Total apps with relationships: <span class="highlight">$totalAppsWithRelationships</span></p>
+        <p>Maximum Depth Analyzed: <span class="highlight">$MaxDepth</span></p>
         <p>Report generated on: <span class="highlight">$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')</span></p>
     </div>
-"@
-
-    $html += 
-    @"
-<div class="sort-options">
-    <label><input type="radio" name="sortOption" value="parent" checked> Sort by Parent Depth</label>
-    <label><input type="radio" name="sortOption" value="child"> Sort by Child Depth</label>
+<div class="grid-options">
+    <label for="gridSize">Apps per row:</label>
+    <select id="gridSize">
+        <option value="1">1</option>
+        <option value="2" selected>2</option>
+        <option value="3">3</option>
+        <option value="4">4</option>
+    </select>
 </div>
+<div id="appGrid" class="grid-container grid-cols-2">
 "@
 
     foreach ($app in $Tree.Values | Where-Object {
             $_.Dependencies.Count -gt 0 -or
             $_.DependentApps.Count -gt 0 -or
             $_.SupersededBy.Count -gt 0 -or
-            $_.Supersedes.Count -gt 0 }) {
+            $_.Supersedes.Count -gt 0
+        }) {
 
-        $html += 
-        @"
-    <div class="app-card">
-        <h2>📦 $($app.AppName)</h2>
-        <div class="depth parent-depth">🟡 <strong>Parent Depth:</strong> $($app.ParentDepth)</div>
-        <div class="depth child-depth">🔵 <strong>Child Depth:</strong> $($app.ChildDepth)</div>
-        <div class="path">🔗 <strong>Paths:</strong> $(($app.RelationshipPaths -join '<br>'))</div>
+        $html += @"
+            <div class="app-card" id="app-$($app.AppId)" data-app-id="$($app.AppId)">
+            <h2>📦 $($app.AppName)</h2>
 "@
 
         if ($app.SupersededBy.Count -gt 0) {
             $html += "<div class='section-title'>⬅️ Superseded By:</div>"
             foreach ($item in $app.SupersededBy) {
-                $html += "<div class='item'>🟢 $($item.DisplayName) $(if($item.Version){"v$($item.Version)"})
-            $(if($item.Publisher){"by $($item.Publisher)"})</div>"
-            }
+                $html += "<div class='item'><a class='app-link' data-app-id='$($item.Id)'>$($item.DisplayName) $(if($item.Version){"v$($item.Version)"})</a></div>"            }
         }
 
         if ($app.Supersedes.Count -gt 0) {
             $html += "<div class='section-title'>➡️ Supersedes:</div>"
             foreach ($item in $app.Supersedes) {
-                $html += "<div class='item'>🟡 $($item.DisplayName) $(if($item.Version){"v$($item.Version)"})
-            $(if($item.Publisher){"by $($item.Publisher)"})</div>"
-            }
+                $html += "<div class='item'><a class='app-link' data-app-id='$($item.Id)'>$($item.DisplayName) $(if($item.Version){"v$($item.Version)"})</a></div>"            }
         }
 
         if ($app.Dependencies.Count -gt 0) {
             $html += "<div class='section-title'>⤵️ Depends on:</div>"
             foreach ($item in $app.Dependencies) {
-                $html += "<div class='item'>🔵 $($item.DisplayName) $(if($item.Version){"v$($item.Version)"}) $(if($item.Publisher){"by $($item.Publisher)"})</div>"
-            }
+                $html += "<div class='item'><a class='app-link' data-app-id='$($item.Id)'>$($item.DisplayName) $(if($item.Version){"v$($item.Version)"})</a></div>"            }
         }
-        
+
         if ($app.DependentApps.Count -gt 0) {
             $html += "<div class='section-title'>⤴️ Dependency for:</div>"
             foreach ($item in $app.DependentApps) {
-                $html += "<div class='item'>🟣 $($item.DisplayName) $(if($item.Version){"v$($item.Version)"}) $(if($item.Publisher){"by $($item.Publisher)"})</div>"
-            }
-        }        
+                $html += "<div class='item'><a class='app-link' data-app-id='$($item.Id)'>$($item.DisplayName) $(if($item.Version){"v$($item.Version)"})</a></div>"            }
+        }
 
-        $html += "</div>"
+        $html += "</div>"  # closes .app-card
     }
+
+    $html += "</div>"  # closes #appGrid grid-container
 
     $html += 
     @"
@@ -573,13 +633,13 @@ document.addEventListener('DOMContentLoaded', () => {
 </html>
 "@
 
-    $html | Out-File -FilePath $OutputPath -Encoding UTF8
-    Write-Host "Relationship tree report saved to: $OutputPath" -ForegroundColor Green
-    Invoke-Item $OutputPath
-}
+        $html | Out-File -FilePath $OutputPath -Encoding UTF8
+        Write-Host "Relationship tree report saved to: $OutputPath" -ForegroundColor Green
+        Invoke-Item $OutputPath
+    }
 
-# Generate the visual report
-Format-RelationshipTree -Tree $relationshipTree -OutputPath $OutputPath
+    # Generate the visual report
+    Format-RelationshipTree -Tree $relationshipTree -OutputPath $OutputPath
 
-# Return the raw data as well
-return $relationshipTree
+    # Return the raw data as well
+    return $relationshipTree
