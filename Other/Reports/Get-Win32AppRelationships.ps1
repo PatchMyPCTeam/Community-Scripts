@@ -871,7 +871,7 @@ function Format-RelationshipTree {
          color: var(--text-light);
          }
          .app-header {
-         background-color: var(--primary-color);
+         background-color: var(--bg-input);
          padding: var(--spacing-md) var(--spacing-lg);
          color: var(--text-dark);
          font-weight: bold;
@@ -891,7 +891,7 @@ function Format-RelationshipTree {
          }
          .item {
          padding: var(--spacing-sm) var(--spacing-md);
-         background-color: var(--bg-input);
+         background-color: var(--bg-card:);
          border-radius: 4px;
          margin-top: var(--spacing-sm);
          }
@@ -924,7 +924,7 @@ function Format-RelationshipTree {
          }
          input.filter-box:focus {
          border-color: var(--primary-color);
-         background-color: #383854;
+         background-color: var(--bg-card:);
          }
          select#gridSize {
          appearance: none;
@@ -939,7 +939,7 @@ function Format-RelationshipTree {
          }
          select#gridSize:focus {
          border-color: var(--primary-color);
-         background-color: #383854;
+         background-color: var(--bg-card:);
          }
          .filter-count {
          color: var(--text-light);
@@ -1076,6 +1076,7 @@ function Format-RelationshipTree {
    
            // First pass: identify direct matches
            if (filterText.trim() === '') {
+
                // Show all apps if filter is empty
                Object.keys(appCards).forEach(appId => {
                    appCards[appId].style.display = '';
@@ -1167,11 +1168,11 @@ function Format-RelationshipTree {
    
            // Reset after animation
            setTimeout(() => {
-               appContent.style.backgroundColor = '#2d2d2d';
+               appContent.style.backgroundColor = 'rgb(30, 30, 45)';
                
                // Restore item colors
                items.forEach((item, index) => {
-                   item.style.backgroundColor = index % 2 === 1 ? '#333333' : '#2d2d2d';
+                   item.style.backgroundColor = index % 2 === 1 ? 'rgb(30, 30, 45)' : 'rgb(30, 30, 45)';
                });
                
                // Cleanup transitions after another delay
