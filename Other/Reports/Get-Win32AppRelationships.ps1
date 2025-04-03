@@ -14,9 +14,7 @@ through a GridView. It recursively traverses relationships to the specified maxi
 helping administrators understand complex application dependencies and relationships.
 
 The generated HTML report provides a visual representation of these relationships with
-filtering capabilities, navigation between related applications, and a summary of
-the environment. This helps with troubleshooting deployment issues, planning application
-updates, and understanding the impact of changes to application dependencies.
+filtering capabilities and navigation between related applications.
 
 .NOTES
 Author:     Ben Whitmore @PatchMyPC
@@ -80,11 +78,12 @@ param (
 
 $VerbosePreference = "Continue"
 
-# Initialize data structures at the script level
+# Initialize variables at the script level
 $script:relationshipTree = @{}
 $script:processedApps = @{}
 $script:graphCache = @{}
 $script:selectedApp = $null
+$script:htmlComponents = @{}
 
 # Cached Graph API request function
 function Invoke-CachedGraphRequest {
@@ -100,19 +99,15 @@ function Invoke-CachedGraphRequest {
         [string]$Body
     )
     
-    # Initialize cache if not exists
-    if (-not (Get-Variable -Name graphCache -ErrorAction SilentlyContinue)) {
-        $script:graphCache = @{}
+    # Return cached response if available for GET requests
+    if ($Method -eq "GET" -and $script:graphCache.ContainsKey($Uri)) {
+        Write-Verbose "Returning cached response for URI: $Uri"
+        return $script:graphCache[$Uri]
     }
     
     # Ensure token is valid
     if (-not (Ensure-ValidGraphToken)) {
         throw "Unable to obtain a valid Graph token"
-    }
-    
-    # Return cached response if available for GET requests
-    if ($Method -eq "GET" -and $script:graphCache.ContainsKey($Uri)) {
-        return $script:graphCache[$Uri]
     }
     
     try {
@@ -141,6 +136,7 @@ function Invoke-CachedGraphRequest {
     }
 }
 
+# Graph API app retrieval
 function Get-GraphApps {
     [CmdletBinding()]
     param (
@@ -151,13 +147,31 @@ function Get-GraphApps {
         [string]$Select = "id,displayName,publisher",
         
         [Parameter(Mandatory = $false)]
-        [int]$Top = 999
+        [int]$Top = 999,
+        
+        [Parameter(Mandatory = $false)]
+        [string]$AppId = ""
     )
     
+    # If AppId is provided, get a specific app
+    if (-not [string]::IsNullOrEmpty($AppId)) {
+        $uri = "https://graph.microsoft.com/beta/deviceAppManagement/mobileApps/$AppId`?`$select=$Select"
+        
+        try {
+            $response = Invoke-CachedGraphRequest -Uri $uri
+            return $response
+        }
+        catch {
+            Write-Warning "Failed to retrieve app with ID $AppId`: $_"
+            return $null
+        }
+    }
+    
+    # Otherwise, get all apps matching the filter
     $uri = "https://graph.microsoft.com/beta/deviceAppManagement/mobileApps?`$select=$Select&`$top=$Top"
     
     if (-not [string]::IsNullOrEmpty($Filter)) {
-        
+
         # Don't escape the filter if it's already been escaped
         if ($Filter.Contains("%")) {
             $uri += "&`$filter=$Filter"
@@ -178,44 +192,106 @@ function Get-GraphApps {
     }
 }
 
-function Get-GraphAppById {
+# Function to get app relationships
+function Get-AppRelationships {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory = $true)]
+        [Parameter(ParameterSetName = 'Single', Mandatory = $true)]
         [string]$AppId,
         
-        [Parameter(Mandatory = $false)]
-        [string]$Select = "id,displayName,publisher"
+        [Parameter(ParameterSetName = 'Batch', Mandatory = $true)]
+        [array]$Apps,
+        
+        [Parameter(ParameterSetName = 'Batch', Mandatory = $false)]
+        [int]$BatchSize = 20
     )
     
-    $uri = "https://graph.microsoft.com/beta/deviceAppManagement/mobileApps/$AppId`?`$select=$Select"
-    
-    try {
-        $response = Invoke-CachedGraphRequest -Uri $uri
-        return $response
+    # For single app relationship retrieval
+    if ($PSCmdlet.ParameterSetName -eq 'Single') {
+        $uri = "https://graph.microsoft.com/beta/deviceAppManagement/mobileApps/$AppId/relationships"
+        
+        try {
+            $response = Invoke-CachedGraphRequest -Uri $uri
+            return $response.value
+        }
+        catch {
+            Write-Warning "Failed to retrieve relationships for app $AppId`: $_"
+            return @()
+        }
     }
-    catch {
-        Write-Warning "Failed to retrieve app with ID $AppId`: $_"
-        return $null
-    }
-}
 
-function Get-GraphAppRelationships {
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory = $true)]
-        [string]$AppId
-    )
-    
-    $uri = "https://graph.microsoft.com/beta/deviceAppManagement/mobileApps/$AppId/relationships"
-    
-    try {
-        $response = Invoke-CachedGraphRequest -Uri $uri
-        return $response.value
-    }
-    catch {
-        Write-Warning "Failed to retrieve relationships for app $AppId`: $_"
-        return @()
+    # For batch retrieval
+    else {
+        $results = @{}
+        $totalApps = $Apps.Count
+        $processedCount = 0
+        
+        # Process apps in batches
+        for ($i = 0; $i -lt $totalApps; $i += $BatchSize) {
+            $batchApps = $Apps | Select-Object -Skip $i -First $BatchSize
+            
+            # Prepare batch request
+            $batchRequests = @()
+            $requestMap = @{}
+            $requestId = 0
+            
+            foreach ($app in $batchApps) {
+
+                # Skip apps with missing/invalid ID
+                if ([string]::IsNullOrEmpty($app.id)) {
+                    Write-Warning "Skipping app with missing ID"
+                    continue
+                }
+                
+                $requestId++
+                $requestIdStr = $requestId.ToString()
+                $requestMap[$requestIdStr] = $app.id
+                $batchRequests += @{
+                    id     = $requestIdStr
+                    method = "GET"
+                    url    = "/deviceAppManagement/mobileApps/$($app.id)/relationships"
+                }
+                $processedCount++
+            }
+            
+            if ($batchRequests.Count -eq 0) {
+                Write-Verbose "No valid requests in this batch, skipping"
+                continue
+            }
+            
+            $batchRequestBody = @{
+                requests = $batchRequests
+            } | ConvertTo-Json -Depth 10
+            
+            # Send batch request
+            Write-Progress -Activity "Retrieving app relationships" -Status "Processing batch $([Math]::Ceiling($i / $BatchSize) + 1) of $([Math]::Ceiling($totalApps / $BatchSize))" -PercentComplete (($processedCount / $totalApps) * 100)
+            
+            try {
+                $batchResponse = Invoke-MgGraphRequest -Method POST -Uri "https://graph.microsoft.com/beta/`$batch" -Body $batchRequestBody -ContentType "application/json"
+                
+                if ($null -eq $batchResponse -or $null -eq $batchResponse.responses) {
+                    Write-Warning "Received invalid batch response"
+                    continue
+                }
+                
+                # Process responses
+                foreach ($response in $batchResponse.responses) {
+                    $appId = $requestMap[$response.id]
+                    if ($response.status -eq 200) {
+                        $results[$appId] = $response.body.value
+                    }
+                    else {
+                        Write-Warning "Failed to get relationships for app $appId. Status: $($response.status)"
+                    }
+                }
+            }
+            catch {
+                Write-Error "Error in batch request: $_"
+            }
+        }
+        
+        Write-Progress -Activity "Retrieving app relationships" -Completed
+        return $results
     }
 }
 
@@ -225,6 +301,8 @@ function Ensure-ValidGraphToken {
     param()
     
     $graphContext = Get-MgContext
+    $tokenExpirationBuffer = 5 # minutes
+    
     if (-not $graphContext) {
         try {
             Connect-MgGraph -Scopes "DeviceManagementApps.Read.All" -NoWelcome
@@ -238,8 +316,9 @@ function Ensure-ValidGraphToken {
     else {
 
         # Check if token is about to expire
-        if ($graphContext.ExpiresOn -and $graphContext.ExpiresOn -lt (Get-Date).AddMinutes(5)) {
+        if ($graphContext.ExpiresOn -and $graphContext.ExpiresOn -lt (Get-Date).AddMinutes($tokenExpirationBuffer)) {
             try {
+                Write-Verbose "Token expires soon. Refreshing..."
                 Connect-MgGraph -Scopes "DeviceManagementApps.Read.All" -NoWelcome
                 return $true
             }
@@ -252,68 +331,7 @@ function Ensure-ValidGraphToken {
     }
 }
 
-# Function to get app relationships in batches
-function Get-BatchAppRelationships {
-    param (
-        [Parameter(Mandatory = $true)]
-        [array]$Apps,
-        [int]$BatchSize = 20
-    )
-
-    $results = @{}
-    $totalApps = $Apps.Count
-    $processedCount = 0
-    
-    # Process apps in batches
-    for ($i = 0; $i -lt $totalApps; $i += $BatchSize) {
-        $batchApps = $Apps | Select-Object -Skip $i -First $BatchSize
-        
-        # Prepare batch request
-        $batchRequests = @()
-        $requestMap = @{}
-        $requestId = 0
-        
-        foreach ($app in $batchApps) {
-            $requestId++
-            $requestMap[$requestId.ToString()] = $app.id
-            $batchRequests += @{
-                id     = $requestId.ToString()
-                method = "GET"
-                url    = "/deviceAppManagement/mobileApps/$($app.id)/relationships"
-            }
-            $processedCount++
-        }
-        
-        $batchRequestBody = @{
-            requests = $batchRequests
-        } | ConvertTo-Json -Depth 10
-        
-        # Send batch request
-        Write-Progress -Activity "Retrieving app relationships" -Status "Processing batch $([Math]::Ceiling($i / $BatchSize) + 1) of $([Math]::Ceiling($totalApps / $BatchSize))" -PercentComplete (($processedCount / $totalApps) * 100)
-        
-        try {
-            $batchResponse = Invoke-MgGraphRequest -Method POST -Uri "https://graph.microsoft.com/beta/`$batch" -Body $batchRequestBody -ContentType "application/json"
-            
-            # Process responses
-            foreach ($response in $batchResponse.responses) {
-                $appId = $requestMap[$response.id]
-                if ($response.status -eq 200) {
-                    $results[$appId] = $response.body.value
-                }
-                else {
-                    Write-Warning "Failed to get relationships for app $appId. Status: $($response.status)"
-                }
-            }
-        }
-        catch {
-            Write-Error "Error in batch request: $_"
-        }
-    }
-    
-    Write-Progress -Activity "Retrieving app relationships" -Completed
-    return $results
-}
-
+# Process all apps
 function Process-AllApps {
     [CmdletBinding()]
     param()
@@ -336,22 +354,48 @@ function Process-AllApps {
         Write-Progress -Activity "Processing applications" -Status "Retrieving app relationships in batches" -PercentComplete 0
         
         # Get relationships for all apps in batches
-        $relationshipsResults = Get-BatchAppRelationships -Apps $apps
+        try {
+            $relationshipsResults = Get-AppRelationships -Apps $apps
+        }
+        catch {
+            Write-Error "Error retrieving app relationships: $_"
+            return $false
+        }
         
         # Process each app and add to relationship tree
         $totalApps = $apps.Count
         $currentApp = 0
+        $errors = 0
         
         foreach ($app in $apps) {
             $currentApp++
-            Write-Progress -Activity "Processing applications" -Status "Processing $($app.displayName) ($currentApp of $totalApps)" -PercentComplete (($currentApp / $totalApps) * 100)
-            
-            # Add app to tree with its relationships
-            Add-AppRelationshipToTree -AppId $app.id -AppName $app.displayName -Relationships $relationshipsResults[$app.id]
+            try {
+
+                # Ensure we have valid data
+                if ($null -eq $app.id -or [string]::IsNullOrEmpty($app.displayName)) {
+                    Write-Warning "Skipping app with invalid data: $($app.id)"
+                    continue
+                }
+                
+                Write-Progress -Activity "Processing applications" -Status "Processing $($app.displayName) ($currentApp of $totalApps)" -PercentComplete (($currentApp / $totalApps) * 100)
+                
+                # Add app to tree with its relationships
+                $relationships = if ($relationshipsResults.ContainsKey($app.id)) { $relationshipsResults[$app.id] } else { @() }
+                Add-AppRelationshipToTree -AppId $app.id -AppName $app.displayName -Relationships $relationships
+            }
+            catch {
+                Write-Warning "Error processing app $($app.displayName): $_"
+                $errors++
+            }
         }
         
         Write-Progress -Activity "Processing applications" -Completed
-        return $true
+        
+        if ($errors -gt 0) {
+            Write-Warning "Completed with $errors errors."
+        }
+        
+        return $errors -lt $totalApps # Return true if at least some apps were processed successfully
     }
     catch {
         Write-Error "Error processing all apps: $_"
@@ -359,6 +403,7 @@ function Process-AllApps {
     }
 }
 
+# Function to add app relationships to the tree
 function Add-AppRelationshipToTree {
     [CmdletBinding()]
     param (
@@ -391,6 +436,15 @@ function Add-AppRelationshipToTree {
         return
     }
     
+    # Helper function to add related app if not exists
+    $addRelatedApp = {
+        param ($collection, $app)
+        if (-not ($collection | Where-Object Id -eq $app.Id)) {
+            $collection += $app
+        }
+        return $collection
+    }
+    
     foreach ($relationship in $Relationships) {
         $relatedApp = @{
             Id          = $relationship.targetId
@@ -404,38 +458,31 @@ function Add-AppRelationshipToTree {
                 if ($relationship.targetType -eq "child") {
 
                     # This app depends on the target
-                    if (-not ($RelationshipTree[$AppId].Dependencies | Where-Object Id -eq $relatedApp.Id)) {
-                        $RelationshipTree[$AppId].Dependencies += $relatedApp
-                    }
+                    $RelationshipTree[$AppId].Dependencies = & $addRelatedApp $RelationshipTree[$AppId].Dependencies $relatedApp
                 }
                 elseif ($relationship.targetType -eq "parent") {
 
                     # Target depends on this app
-                    if (-not ($RelationshipTree[$AppId].DependentApps | Where-Object Id -eq $relatedApp.Id)) {
-                        $RelationshipTree[$AppId].DependentApps += $relatedApp
-                    }
+                    $RelationshipTree[$AppId].DependentApps = & $addRelatedApp $RelationshipTree[$AppId].DependentApps $relatedApp
                 }
             }
             "#microsoft.graph.mobileAppSupersedence" {
                 if ($relationship.targetType -eq "parent") {
 
                     # This app is superseded by the target
-                    if (-not ($RelationshipTree[$AppId].SupersededBy | Where-Object Id -eq $relatedApp.Id)) {
-                        $RelationshipTree[$AppId].SupersededBy += $relatedApp
-                    }
+                    $RelationshipTree[$AppId].SupersededBy = & $addRelatedApp $RelationshipTree[$AppId].SupersededBy $relatedApp
                 }
                 elseif ($relationship.targetType -eq "child") {
 
                     # This app supersedes the target
-                    if (-not ($RelationshipTree[$AppId].Supersedes | Where-Object Id -eq $relatedApp.Id)) {
-                        $RelationshipTree[$AppId].Supersedes += $relatedApp
-                    }
+                    $RelationshipTree[$AppId].Supersedes = & $addRelatedApp $RelationshipTree[$AppId].Supersedes $relatedApp
                 }
             }
         }
     }
 }
 
+# Function to process app by name
 function Process-AppByName {
     [CmdletBinding()]
     param (
@@ -449,15 +496,40 @@ function Process-AppByName {
     
     try {
 
-        # Check if the name contains wildcard characters
-        if ($Name -match '[*?]') {
-
-            # If it has wildcards, get all apps and filter client-side
-            Write-Verbose "Wildcard detected in app name pattern: $Name"
-            $apps = Get-GraphApps
+        # Retrieve all apps once to avoid multiple API calls
+        Write-Verbose "Retrieving all apps for name matching"
+        $apps = Get-GraphApps
+        
+        if ($apps.Count -eq 0) {
+            Write-Warning "No apps found"
+            return $false
+        }
+        
+        # Helper function for finding matches
+        function Find-MatchingApps {
+            param (
+                [Parameter(Mandatory = $true)]
+                [array]$Apps,
+                
+                [Parameter(Mandatory = $true)]
+                [string]$SearchPattern,
+                
+                [Parameter(Mandatory = $false)]
+                [switch]$ExactMatch
+            )
             
-            # Use PowerShell's -like operator for wildcard matching
-            $matchedApps = $apps | Where-Object { $_.displayName -like $Name }
+            if ($ExactMatch) {
+                return $Apps | Where-Object { $_.displayName -eq $SearchPattern }
+            }
+            else {
+                return $Apps | Where-Object { $_.displayName -like $SearchPattern }
+            }
+        }
+        
+        # Handle wildcard search
+        if ($Name -match '[*?]') {
+            Write-Verbose "Wildcard detected in app name pattern: $Name"
+            $matchedApps = Find-MatchingApps -Apps $apps -SearchPattern $Name
             
             if ($matchedApps.Count -eq 0) {
                 Write-Warning "No apps found matching pattern: $Name"
@@ -474,81 +546,49 @@ function Process-AppByName {
             
             return $true
         }
-        else {
-            # For apps with complex names (spaces, versions), retrieve all apps and filter client-side
-            Write-Verbose "Searching for app with name: '$Name'"
-            $apps = Get-GraphApps
-            
-            # Find exact matches first
-            $exactMatches = $apps | Where-Object { $_.displayName -eq $Name }
-            
-            if ($exactMatches.Count -gt 0) {
-                Write-Verbose "Found exact match for: '$Name'"
-                foreach ($app in $exactMatches) {
-                    Write-Verbose "Processing app: $($app.displayName)"
-                    Process-AppRelationships -AppId $app.id -AppName $app.displayName -VisitedApps @{}
-                }
-                return $true
-            }
-            
-            # If no exact matches, try a contains approach
-            Write-Verbose "No exact match found, searching for apps containing: '$Name'"
-            $containsMatches = $apps | Where-Object { $_.displayName -like "*$Name*" }
-            
-            if ($containsMatches.Count -eq 0) {
-
-                # Try matching on just the app name part (before version number)
-                $nameParts = $Name -split '\s+\d'
-                if ($nameParts.Count -gt 0) {
-                    $appNamePart = $nameParts[0].Trim()
-                    Write-Verbose "Trying with base app name: '$appNamePart'"
-                    $containsMatches = $apps | Where-Object { $_.displayName -like "*$appNamePart*" }
-                }
-            }
-            
-            if ($containsMatches.Count -eq 0) {
-                Write-Warning "No apps found containing: '$Name'"
-                return $false
-            }
-            
-            # If only one match, process it
-            if ($containsMatches.Count -eq 1) {
-                $app = $containsMatches[0]
+        
+        # Try exact match first
+        Write-Verbose "Searching for exact match: '$Name'"
+        $exactMatches = Find-MatchingApps -Apps $apps -SearchPattern $Name -ExactMatch
+        
+        if ($exactMatches.Count -gt 0) {
+            Write-Verbose "Found exact match for: '$Name'"
+            foreach ($app in $exactMatches) {
                 Write-Verbose "Processing app: $($app.displayName)"
                 Process-AppRelationships -AppId $app.id -AppName $app.displayName -VisitedApps @{}
-                return $true
             }
-            
-            # If multiple matches, let user select
-            Write-Host "Multiple apps found matching '$Name'. Please select the correct app:" -ForegroundColor Yellow
-            for ($i = 0; $i -lt [Math]::Min($containsMatches.Count, 15); $i++) {
-                Write-Host "[$($i+1)] $($containsMatches[$i].displayName)" -ForegroundColor Cyan
-            }
-            
-            if ($containsMatches.Count -gt 15) {
-                Write-Host "[More than 15 matches found. Showing first 15 only.]" -ForegroundColor Yellow
-            }
-            
-            $selection = Read-Host "Enter the number of the app to process (or 'A' for all)"
-            
-            if ($selection -eq 'A' -or $selection -eq 'a') {
-                foreach ($app in $containsMatches) {
-                    Write-Verbose "Processing app: $($app.displayName)"
-                    Process-AppRelationships -AppId $app.id -AppName $app.displayName -VisitedApps @{}
-                }
-                return $true
-            }
-            elseif ([int]::TryParse($selection, [ref]$null) -and [int]$selection -ge 1 -and [int]$selection -le $containsMatches.Count) {
-                $app = $containsMatches[[int]$selection - 1]
-                Write-Verbose "Processing selected app: $($app.displayName)"
-                Process-AppRelationships -AppId $app.id -AppName $app.displayName -VisitedApps @{}
-                return $true
-            }
-            else {
-                Write-Warning "Invalid selection. No apps processed."
-                return $false
+            return $true
+        }
+        
+        # Then try contains match
+        Write-Verbose "No exact match found, searching for apps containing: '$Name'"
+        $containsMatches = Find-MatchingApps -Apps $apps -SearchPattern "*$Name*"
+        
+        # If no contains matches, try with base name part (before version number)
+        if ($containsMatches.Count -eq 0) {
+            $nameParts = $Name -split '\s+\d'
+            if ($nameParts.Count -gt 0) {
+                $appNamePart = $nameParts[0].Trim()
+                Write-Verbose "Trying with base app name: '$appNamePart'"
+                $containsMatches = Find-MatchingApps -Apps $apps -SearchPattern "*$appNamePart*"
             }
         }
+        
+        if ($containsMatches.Count -eq 0) {
+            Write-Warning "No apps found containing: '$Name'"
+            return $false
+        }
+        
+        # If only one match, process it
+        if ($containsMatches.Count -eq 1) {
+            $app = $containsMatches[0]
+            Write-Verbose "Processing app: $($app.displayName)"
+            Process-AppRelationships -AppId $app.id -AppName $app.displayName -VisitedApps @{}
+            return $true
+        }
+        
+        # Interactive selection for multiple matches
+        Handle-MultipleAppMatches -MatchedApps $containsMatches -SearchName $Name
     }
     catch {
         Write-Error "Error processing app by name: $_"
@@ -556,6 +596,50 @@ function Process-AppByName {
     }
 }
 
+# Function for handling multiple app matches
+function Handle-MultipleAppMatches {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true)]
+        [array]$MatchedApps,
+        
+        [Parameter(Mandatory = $true)]
+        [string]$SearchName
+    )
+    
+    Write-Host "Multiple apps found matching '$SearchName'. Please select the correct app:" -ForegroundColor Yellow
+    $maxToShow = [Math]::Min($MatchedApps.Count, 15)
+    
+    for ($i = 0; $i -lt $maxToShow; $i++) {
+        Write-Host "[$($i+1)] $($MatchedApps[$i].displayName)" -ForegroundColor Cyan
+    }
+    
+    if ($MatchedApps.Count -gt 15) {
+        Write-Host "[More than 15 matches found. Showing first 15 only.]" -ForegroundColor Yellow
+    }
+    
+    $selection = Read-Host "Enter the number of the app to process (or 'A' for all)"
+    
+    if ($selection -eq 'A' -or $selection -eq 'a') {
+        foreach ($app in $MatchedApps) {
+            Write-Verbose "Processing app: $($app.displayName)"
+            Process-AppRelationships -AppId $app.id -AppName $app.displayName -VisitedApps @{}
+        }
+        return $true
+    }
+    elseif ([int]::TryParse($selection, [ref]$null) -and [int]$selection -ge 1 -and [int]$selection -le $MatchedApps.Count) {
+        $app = $MatchedApps[[int]$selection - 1]
+        Write-Verbose "Processing selected app: $($app.displayName)"
+        Process-AppRelationships -AppId $app.id -AppName $app.displayName -VisitedApps @{}
+        return $true
+    }
+    else {
+        Write-Warning "Invalid selection. No apps processed."
+        return $false
+    }
+}
+
+# Function to process app selection
 function Process-AppSelection {
     [CmdletBinding()]
     param()
@@ -572,11 +656,13 @@ function Process-AppSelection {
             return $false
         }
         
-        $appsForSelection = $apps | ForEach-Object {
-            [PSCustomObject]@{
-                Id          = $_.id
-                DisplayName = $_.displayName
-                Publisher   = $_.publisher
+        # Transform data for Out-GridView
+        $appsForSelection = @()
+        foreach ($app in $apps) {
+            $appsForSelection += [PSCustomObject]@{
+                Id          = $app.id
+                DisplayName = $app.displayName
+                Publisher   = if ($app.publisher) { $app.publisher } else { "Unknown" }
             }
         }
         
@@ -599,6 +685,7 @@ function Process-AppSelection {
     }
 }
 
+# Function for relationship processing
 function Process-AppRelationships {
     [CmdletBinding()]
     param (
@@ -640,13 +727,13 @@ function Process-AppRelationships {
     $VisitedApps[$AppId] = $CurrentDepth
     $ProcessedApps[$AppId] = $true
     
-    # Get relationships
+    # Get relationships - either from batch results or individually
     $relationships = $null
     if ($BatchResults -and $BatchResults.ContainsKey($AppId)) {
         $relationships = $BatchResults[$AppId]
     }
     else {
-        $relationships = Get-GraphAppRelationships -AppId $AppId
+        $relationships = Get-AppRelationships -AppId $AppId
     }
     
     # Add app and relationships to the tree
@@ -665,7 +752,7 @@ function Process-AppRelationships {
     }
 }
 
-# Create a visual tree representation with added filter option
+# Function to create a visual tree representation with added filter option
 function Format-RelationshipTree {
     param (
         [Parameter(Mandatory = $true)]
@@ -855,7 +942,7 @@ function Format-RelationshipTree {
          background-color: #383854;
          }
          .filter-count {
-         color: var(--primary-color);
+         color: var(--text-light);
          }
          .navigation-controls {
          position: fixed;
@@ -911,35 +998,29 @@ function Format-RelationshipTree {
     $html += @"
 <script>
    document.addEventListener('DOMContentLoaded', () => {
+       // Cache DOM elements to avoid repeated queries
        const gridSizeSelect = document.getElementById('gridSize');
        const dropdownIcon = document.querySelector('.dropdown-icon');
        const appGrid = document.getElementById('appGrid');
        const filterInput = document.getElementById('appFilter');
        const filterCount = document.getElementById('filterCount');
        const noRelationshipsMessage = document.getElementById('noRelationshipsMessage');
-       const appCards = document.querySelectorAll('.app-card');
+       const appCards = {};
        const relatedApps = {};
-
-       if (appCards.length === 0) {
-           noRelationshipsMessage.style.display = 'block';
-        }
-   
-       // Store references to all app cards by app ID for easier navigation
+       
        document.querySelectorAll('.app-card').forEach(card => {
            const appId = card.getAttribute('data-app-id');
-   
+           
            if (appId) {
                appCards[appId] = card;
-   
-               // Add ID for direct linking
                card.id = 'app-' + appId;
-   
+               
                // Build relationship map
                relatedApps[appId] = {
                    name: card.querySelector('.app-header').textContent.trim(),
                    relationships: []
                };
-   
+               
                // Collect all related app IDs
                card.querySelectorAll('.app-link').forEach(link => {
                    const relatedAppId = link.getAttribute('data-app-id');
@@ -949,44 +1030,49 @@ function Format-RelationshipTree {
                });
            }
        });
+       
+       const hasRelationships = Object.keys(appCards).length > 0;
+       if (!hasRelationships) {
+           noRelationshipsMessage.style.display = 'block';
+       }
    
        // Setup app link navigation
        document.querySelectorAll('.app-link').forEach(link => {
-           link.addEventListener('click', (e) => {
+           link.addEventListener('click', () => {
                const targetAppId = link.getAttribute('data-app-id');
                navigateToApp(targetAppId);
            });
        });
    
-       // Setup grid column layout
+       // Update grid column layout
        function updateGridColumns() {
            const cols = gridSizeSelect.value;
            appGrid.className = 'grid-container grid-cols-' + cols;
        }
    
-       // Rotate SVG icon when dropdown is focused (opened)
-   gridSizeSelect.addEventListener('focus', () => {
-       dropdownIcon.style.transform = 'translateY(-50%) rotate(180deg)';
-   });
+       // Dropdown icon handling - consolidated transitions
+       function handleDropdownIcon(isOpen) {
+           dropdownIcon.style.transform = isOpen ? 
+               'translateY(-50%) rotate(180deg)' : 
+               'translateY(-50%) rotate(0deg)';
+       }
    
-   // Reset SVG icon when dropdown selection changes or loses focus (closed)
-   const resetDropdownIcon = () => {
-       dropdownIcon.style.transform = 'translateY(-50%) rotate(0deg)';
-   };
-   
-   gridSizeSelect.addEventListener('blur', resetDropdownIcon);
-   gridSizeSelect.addEventListener('change', () => {
-   updateGridColumns();   // <-- Add this to update grid layout
-   resetDropdownIcon();
-   gridSizeSelect.blur(); 
-   });
+       gridSizeSelect.addEventListener('focus', () => handleDropdownIcon(true));
+       gridSizeSelect.addEventListener('blur', () => handleDropdownIcon(false));
+       gridSizeSelect.addEventListener('change', () => {
+           updateGridColumns();
+           handleDropdownIcon(false);
+           gridSizeSelect.blur();
+       });
    
        // Filter apps based on input text
        function filterApps() {
            const filterText = filterInput.value.toLowerCase();
            let visibleApps = 0;
-           let visibleAppIds = new Set();
-           let expandedAppIds = new Set();
+           
+           // Use sets for better performance with large data
+           const visibleAppIds = new Set();
+           const expandedAppIds = new Set();
    
            // First pass: identify direct matches
            if (filterText.trim() === '') {
@@ -1023,7 +1109,7 @@ function Format-RelationshipTree {
                });
            }
    
-           // Update filter count to show "X out of total X apps"
+           // Update filter count
            const totalApps = Object.keys(appCards).length;
            filterCount.textContent = visibleApps + ' out of ' + totalApps + ' apps shown';
        }
@@ -1037,17 +1123,18 @@ function Format-RelationshipTree {
            filterInput.focus();
        });
    
-       // Navigation function - scrolls to the app card when link is clicked
+       // Navigation function - consolidated style transitions
        window.navigateToApp = function(appId) {
            const targetCard = document.getElementById('app-' + appId);
    
            if (targetCard) {
+
                // If the card is hidden due to filtering, show it
                if (targetCard.style.display === 'none') {
-                   // Find the app name
-                   const appName = relatedApps[appId].name;
+
                    // Set the filter to match this app
-                   filterInput.value = appName.replace('📦 ', '');
+                   filterInput.value = relatedApps[appId].name;
+
                    // Apply the filter
                    filterApps();
                }
@@ -1057,39 +1144,46 @@ function Format-RelationshipTree {
                    block: 'start'
                });
    
-               // Flash effect to highlight the whole app-card
-               targetCard.style.transition = 'background-color 0.5s';
-               const appContent = targetCard.querySelector('.app-content');
-               appContent.style.transition = 'background-color 0.5s';
-               appContent.style.backgroundColor = '#3a5d56';
-   
-               // Optional: Make all item elements temporarily transparent
-               const items = targetCard.querySelectorAll('.item');
-   
-               items.forEach(item => {
-                   item.style.transition = 'background-color 0.5s';
-                   item.style.backgroundColor = 'transparent';
-               });
-   
-               setTimeout(() => {
-                   appContent.style.backgroundColor = '#2d2d2d';
-   
-                   // Restore original background colors of items
-                   items.forEach((item, index) => {
-                       const isEven = index % 2 === 1;
-                       item.style.backgroundColor = isEven ? '#333333' : '#2d2d2d';
-   
-                       setTimeout(() => {
-                           item.style.transition = '';
-                       }, 1000);
-                   });
-   
-                   setTimeout(() => {
-                       targetCard.style.transition = '';
-                   }, 1000);
-               }, 1000);
+               // Apply highlight effect
+               applyHighlightEffect(targetCard);
            }
        };
+       
+       // Extracted highlight effect to separate function
+       function applyHighlightEffect(card) {
+
+           // Apply transitions once
+           card.style.transition = 'background-color 0.5s';
+           const appContent = card.querySelector('.app-content');
+           appContent.style.transition = 'background-color 0.5s';
+           appContent.style.backgroundColor = '#3a5d56';
+           
+           // Get all items and apply transition once
+           const items = card.querySelectorAll('.item');
+           items.forEach(item => {
+               item.style.transition = 'background-color 0.5s';
+               item.style.backgroundColor = 'transparent';
+           });
+   
+           // Reset after animation
+           setTimeout(() => {
+               appContent.style.backgroundColor = '#2d2d2d';
+               
+               // Restore item colors
+               items.forEach((item, index) => {
+                   item.style.backgroundColor = index % 2 === 1 ? '#333333' : '#2d2d2d';
+               });
+               
+               // Cleanup transitions after another delay
+               setTimeout(() => {
+                   card.style.transition = '';
+                   appContent.style.transition = '';
+                   items.forEach(item => {
+                       item.style.transition = '';
+                   });
+               }, 1000);
+           }, 1000);
+       }
    
        // Back to top functionality
        document.getElementById('backToTop').addEventListener('click', () => {
@@ -1105,7 +1199,7 @@ function Format-RelationshipTree {
    
        // Handle hash navigation if present
        if (window.location.hash) {
-           const appId = window.location.hash.substring(5); // Remove "#app-"
+           const appId = window.location.hash.substring(5);
            setTimeout(() => navigateToApp(appId), 300);
        }
    });
@@ -1117,7 +1211,7 @@ function Format-RelationshipTree {
 <!--Logo Start-->
 <div class='css-97v30w'>
 <button type="button" class="logoBtn">
-   <svg width="58" height="58" viewBox="0 0 38 38" fill="none"
+   <svg width="48" height="48" viewBox="0 0 38 38" fill="none"
       xmlns="http://www.w3.org/2000/svg" class="logo">
       <g clip-path="url(#clip0_1301_19104)">
          <path d="M1.235 24.852C1.007 24.776 0.836 24.605 0.76 24.377C0.266 22.629 0 20.824 0 19C0 16.758 0.38 14.592 1.14 12.502C1.767 10.754 2.679 9.10099 3.8 7.61899C3.933 7.42899 4.237 7.48599 4.294 7.73299C4.427 8.35999 4.617 9.17699 4.826 10.013C5.871 14.307 6.897 17.974 7.961 20.957C8.303 22.002 8.664 22.971 9.025 23.883C9.424 24.89 9.937 25.897 10.564 26.828C10.811 27.227 11.039 27.569 11.248 27.835C11.305 27.911 11.362 27.968 11.4 28.044L1.235 24.852Z"
@@ -1190,16 +1284,16 @@ function Format-RelationshipTree {
    <br>
    <div class="summary card" style="width: 1200px; justify-content: space-between; display: flex; gap: 40px; padding: 20px;">
       <div>
-         <h2>Win32 App Relationship Summary</h2>
-         <p>Query Type: <span class="highlight">$appSource</span></p>
-         <p>Total apps with relationships: <span class="highlight">$totalAppsWithRelationships</span></p>
-         <p>Maximum Depth Analyzed: <span class="highlight">$MaxDepth</span></p>
-         <p>Report generated on: <span class="highlight">$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')</span></p>
-      </div>
+        <h2>Win32 App Relationship Summary</h2>
+        <p><span class="highlight">Query Type:</span> $appSource</p>
+        <p><span class="highlight">Total apps with relationships:</span> $totalAppsWithRelationships</p>
+        <p><span class="highlight">Maximum Depth Analyzed:</span> $MaxDepth</p>
+        <p><span class="highlight">Report generated on:</span> $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')</p>
+    </div>
       <div class="controls-container" style="width: 500px;">
          <div class="controls card" style="padding:15px;">
             <div style="margin-bottom: 15px;">
-               <div style="font-weight: bold; margin-bottom: 8px;">Grid Layout:</div>
+               <div style="margin-bottom: 8px;"><span class="highlight">Grid Layout:</span></div>
                <div class="custom-select-wrapper">
                   <select id="gridSize">
                      <option value="1">1</option>
@@ -1213,7 +1307,7 @@ function Format-RelationshipTree {
                </div>
             </div>
             <div>
-               <div style="font-weight: bold; margin-bottom: 8px;">Filter apps:</div>
+               <div style="margin-bottom: 8px;"><span class="highlight">Filter apps:</span></div>
                <div class="filter-input-group">
                   <input type="text" id="appFilter" class="filter-box" placeholder="Enter app name...">
                   <button id="clearFilter" class="clear-button">Clear</button>
