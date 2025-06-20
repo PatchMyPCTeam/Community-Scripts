@@ -1,12 +1,14 @@
 <#
 .SYNOPSIS
     Imports the Patch My PC code-signing certificate public key into the local machine Trusted Publishers store.
+    This certificate is used to sign detection and remediation scripts for Patch My PC applications published using Patch My PC Cloud.
 
 .NOTES
-    FileName:    Import-PMPTrustedPublisherCertificate.ps1
+    FileName:    Import-PMPCCloudTrustedPublisherCertificate.ps1
     Author:      Ben Whitmore
     Date:        25th June 2024
-    
+    Updated:     20th June 2025
+
 .DESCRIPTION
     This script imports the Patch My PC code-signing certificate public key into the local machine Trusted Publishers store. 
     The certificate is store in base64 format in the script and is converted to a certificate object before being added to the store.
@@ -14,8 +16,9 @@
     NOTE: This script requires elevated permissions to install the certificate into the Local Machine store.
 
     # The following code was used to import the certificate as a Base64-encoded string
-    $certPath = "C:\Path\PatchMyPC-CodeSigning.cer"
-    $base64Cert = [System.Convert]::ToBase64String(([System.Security.Cryptography.X509Certificates.X509Certificate2]::new($certPath))
+    $certPath = 'C:\Temp\PmpcScripts\certs\Patch My PC LLC.cer'
+    $bytes = [System.IO.File]::ReadAllBytes($certPath)
+    $base64 = [System.Convert]::ToBase64String($bytes)
 #>
 
 # Base64-encoded certificate content
@@ -71,12 +74,12 @@ try {
         $certExists = $store.Certificates | Where-Object { $_.Thumbprint -eq $cert.Thumbprint }
 
         if ($certExists) {
-            Write-Output "Patch My PC certificate already exists in the Local Machine Trusted Publisher store"
+            Write-Output "Patch My PC Cloud certificate already exists in the Local Machine Trusted Publisher store"
         }
         else {
             # Add the certificate to the store
             $store.Add($cert)
-            Write-Output "Patch My PC certificate successfully imported into the Local Machine Trusted Publisher store"
+            Write-Output "Patch My PC Cloud certificate successfully imported into the Local Machine Trusted Publisher store"
         }
     }
     catch {
