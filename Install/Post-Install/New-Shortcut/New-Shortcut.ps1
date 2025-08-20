@@ -14,6 +14,9 @@
 .PARAMETER Target
     The target path of the shortcut. This parameter is mandatory.
 
+.PARAMETER Arguments
+    The arguments to pass to the target application.
+
 .PARAMETER WorkingDirectory
     The working directory for the shortcut.
 
@@ -34,6 +37,12 @@
 
 .PARAMETER User
     Indicates that the shortcut should be created under the user StartMenu or Desktop rather than allusers StartMenu or public Desktop.
+
+.PARAMETER ExpandEnvironmentVariables
+    Indicates that environment variables in the shortcut Target, WorkingDirectory, and IconPath should be expanded.
+
+.PARAMETER As32on64
+    When expanding environment variables on a 64-bit system, treat %ProgramFiles% as %ProgramFiles(x86)% and %CommonProgramFiles% as %CommonProgramFiles(x86)%. Use this in conjunction with -ExpandEnvironmentVariables when %ProgramFiles% should be interpreted as C:\Program Files (x86) on a 64-bit OS.
 
 .PARAMETER Shortcuts
     An array of hashtable entries for creating multiple shortcuts. Each hashtable should include the parameters as keys.
@@ -62,55 +71,70 @@
 
 #>
 
-[CmdletBinding(DefaultParameterSetName='Path')]
+[CmdletBinding(DefaultParameterSetName = 'Path')]
 param(
-    [Parameter(Mandatory=$true, ParameterSetName='Path')]
-    [Parameter(Mandatory=$false, ParameterSetName='Desktop')]
-    [Parameter(Mandatory=$false, ParameterSetName='StartMenu')]
+    [Parameter(Mandatory = $true, ParameterSetName = 'Path')]
+    [Parameter(Mandatory = $false, ParameterSetName = 'Desktop')]
+    [Parameter(Mandatory = $false, ParameterSetName = 'StartMenu')]
     [string]$Path,
 
-    [Parameter(Mandatory=$true, ParameterSetName='Path')]
-    [Parameter(Mandatory=$true, ParameterSetName='Desktop')]
-    [Parameter(Mandatory=$true, ParameterSetName='StartMenu')]
+    [Parameter(Mandatory = $true, ParameterSetName = 'Path')]
+    [Parameter(Mandatory = $true, ParameterSetName = 'Desktop')]
+    [Parameter(Mandatory = $true, ParameterSetName = 'StartMenu')]
     [string]$Name,
 
-    [Parameter(Mandatory=$true, ParameterSetName='Path')]
-    [Parameter(Mandatory=$true, ParameterSetName='Desktop')]
-    [Parameter(Mandatory=$true, ParameterSetName='StartMenu')]
+    [Parameter(Mandatory = $true, ParameterSetName = 'Path')]
+    [Parameter(Mandatory = $true, ParameterSetName = 'Desktop')]
+    [Parameter(Mandatory = $true, ParameterSetName = 'StartMenu')]
     [string]$Target,
 
-    [Parameter(Mandatory=$false, ParameterSetName='Path')]
-    [Parameter(Mandatory=$false, ParameterSetName='Desktop')]
-    [Parameter(Mandatory=$false, ParameterSetName='StartMenu')]
+    [Parameter(Mandatory = $false, ParameterSetName = 'Path')]
+    [Parameter(Mandatory = $false, ParameterSetName = 'Desktop')]
+    [Parameter(Mandatory = $false, ParameterSetName = 'StartMenu')]
+    [string]$Arguments,
+
+    [Parameter(Mandatory = $false, ParameterSetName = 'Path')]
+    [Parameter(Mandatory = $false, ParameterSetName = 'Desktop')]
+    [Parameter(Mandatory = $false, ParameterSetName = 'StartMenu')]
     [string]$WorkingDirectory,
 
-    [Parameter(Mandatory=$false, ParameterSetName='Path')]
-    [Parameter(Mandatory=$false, ParameterSetName='Desktop')]
-    [Parameter(Mandatory=$false, ParameterSetName='StartMenu')]
+    [Parameter(Mandatory = $false, ParameterSetName = 'Path')]
+    [Parameter(Mandatory = $false, ParameterSetName = 'Desktop')]
+    [Parameter(Mandatory = $false, ParameterSetName = 'StartMenu')]
     [string]$IconPath,
 
-    [Parameter(Mandatory=$false, ParameterSetName='Path')]
-    [Parameter(Mandatory=$false, ParameterSetName='Desktop')]
-    [Parameter(Mandatory=$false, ParameterSetName='StartMenu')]
+    [Parameter(Mandatory = $false, ParameterSetName = 'Path')]
+    [Parameter(Mandatory = $false, ParameterSetName = 'Desktop')]
+    [Parameter(Mandatory = $false, ParameterSetName = 'StartMenu')]
     [int]$IconIndex = 0,
 
-    [Parameter(Mandatory=$false, ParameterSetName='Path')]
-    [Parameter(Mandatory=$false, ParameterSetName='Desktop')]
-    [Parameter(Mandatory=$false, ParameterSetName='StartMenu')]
+    [Parameter(Mandatory = $false, ParameterSetName = 'Path')]
+    [Parameter(Mandatory = $false, ParameterSetName = 'Desktop')]
+    [Parameter(Mandatory = $false, ParameterSetName = 'StartMenu')]
     [ValidateSet('Normal', 'Maximized', 'Minimized', 'Hidden')]
     [string]$WindowStyle = 'Normal',
 
-    [Parameter(Mandatory=$false, ParameterSetName='StartMenu')]
+    [Parameter(Mandatory = $false, ParameterSetName = 'StartMenu')]
     [switch]$StartMenu,
 
-    [Parameter(Mandatory=$false, ParameterSetName='Desktop')]
+    [Parameter(Mandatory = $false, ParameterSetName = 'Desktop')]
     [switch]$Desktop,
 
-    [Parameter(Mandatory=$false, ParameterSetName='Desktop')]
-    [Parameter(Mandatory=$false, ParameterSetName='StartMenu')]
+    [Parameter(Mandatory = $false, ParameterSetName = 'Desktop')]
+    [Parameter(Mandatory = $false, ParameterSetName = 'StartMenu')]
     [switch]$User,
 
-    [Parameter(Mandatory=$false, ValueFromPipeline=$true, ParameterSetName='Hashtable')]
+    [Parameter(Mandatory = $false, ParameterSetName = 'Path')]
+    [Parameter(Mandatory = $false, ParameterSetName = 'Desktop')]
+    [Parameter(Mandatory = $false, ParameterSetName = 'StartMenu')]
+    [switch]$ExpandEnvironmentVariables,
+
+    [Parameter(Mandatory = $false, ParameterSetName = 'Path')]
+    [Parameter(Mandatory = $false, ParameterSetName = 'Desktop')]
+    [Parameter(Mandatory = $false, ParameterSetName = 'StartMenu')]
+    [switch]$As32on64,
+
+    [Parameter(Mandatory = $false, ValueFromPipeline = $true, ParameterSetName = 'Hashtable')]
     [System.Collections.Hashtable[]]$Shortcuts
 )
 
@@ -126,27 +150,46 @@ begin {
 
     # Map friendly names to window style codes
     $WindowStyleMap = @{
-        'Normal' = 1
+        'Normal'    = 1
         'Maximized' = 3
         'Minimized' = 7
-        'Hidden' = 0
+        'Hidden'    = 0
     }
+
+    function Expand-EnvironmentVariables {
+        param(
+            [Parameter(Mandatory)]
+            [string]$String,
+            [switch]$As32on64
+        )
+
+        if ($As32on64 -and [Environment]::Is64BitOperatingSystem) {
+            # Minimal remap for the variables that differ
+            $String = $String.Replace('%ProgramFiles%', '%ProgramFiles(x86)%').Replace('%CommonProgramFiles%', '%CommonProgramFiles(x86)%')
+        }
+
+        [Environment]::ExpandEnvironmentVariables($String)
+    }
+
 }
 
 process {
     if (!$Shortcuts) {
         $Shortcuts = @(
             @{
-                Name = $Name
-                Path = $Path
-                Target = $Target
-                WorkingDirectory = $WorkingDirectory
-                IconPath = $IconPath
-                IconIndex = $IconIndex
-                WindowStyle = $WindowStyle
-                Desktop = $Desktop
-                StartMenu = $StartMenu
-                User = $User
+                Name                       = $Name
+                Path                       = $Path
+                Target                     = $Target
+                Arguments                  = $Arguments
+                WorkingDirectory           = $WorkingDirectory
+                IconPath                   = $IconPath
+                IconIndex                  = $IconIndex
+                WindowStyle                = $WindowStyle
+                Desktop                    = $Desktop
+                StartMenu                  = $StartMenu
+                User                       = $User
+                ExpandEnvironmentVariables = $ExpandEnvironmentVariables
+                As32on64                   = $As32on64
             }
         )
     }
@@ -157,13 +200,16 @@ process {
         if ($Shortcut.Desktop) {
             if ($Shortcut.User) {
                 $FolderPath = Join-Path $UserDesktop $Shortcut.Path
-            } else {
+            }
+            else {
                 $FolderPath = Join-Path $PublicDesktop $Shortcut.Path
             }
-        } elseif ($Shortcut.StartMenu) {
+        }
+        elseif ($Shortcut.StartMenu) {
             if ($Shortcut.User) {
                 $FolderPath = Join-Path $UserStartMenu $Shortcut.Path
-            } else {
+            }
+            else {
                 $FolderPath = Join-Path $allUsersStartMenu $Shortcut.Path
             }
         }
@@ -191,10 +237,35 @@ process {
         }
 
         $WshShortcut = $WshShell.CreateShortcut($ShortcutPath)
-        $WshShortcut.TargetPath = $Shortcut.target
-        $WshShortcut.WorkingDirectory = $Shortcut.workingDirectory
-        if ($Shortcut.iconPath) {
-            $WshShortcut.IconLocation = "$($Shortcut.iconPath), $($Shortcut.iconIndex)"
+        $WshShortcut.TargetPath = if ($Shortcut.ExpandEnvironmentVariables) {
+            Expand-EnvironmentVariables -String $Shortcut.Target -As32on64:$Shortcut.As32on64
+        }
+        else {
+            $Shortcut.Target
+        }
+        if ($Shortcut.Arguments) {
+            $WshShortcut.Arguments = if ($Shortcut.ExpandEnvironmentVariables) {
+                Expand-EnvironmentVariables -String $Shortcut.Arguments -As32on64:$Shortcut.As32on64
+            }
+            else {
+                $Shortcut.Arguments
+            }
+        }
+        if ($Shortcut.WorkingDirectory) {
+            $WshShortcut.WorkingDirectory = if ($Shortcut.ExpandEnvironmentVariables) {
+                Expand-EnvironmentVariables -String $Shortcut.WorkingDirectory -As32on64:$Shortcut.As32on64
+            }
+            else {
+                $Shortcut.WorkingDirectory
+            }
+        }
+        if ($Shortcut.IconPath) {
+            $WshShortcut.IconLocation = if ($Shortcut.ExpandEnvironmentVariables) {
+                "$(Expand-EnvironmentVariables -String $Shortcut.IconPath -As32on64:$Shortcut.As32on64), $($Shortcut.IconIndex)"
+            }
+            else {
+                "$($Shortcut.IconPath), $($Shortcut.IconIndex)"
+            }
         }
         $WshShortcut.WindowStyle = $WindowStyleMap[$Shortcut.WindowStyle]
         Write-Verbose "Creating shortcut: $ShortcutPath"
