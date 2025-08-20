@@ -39,10 +39,10 @@
     Indicates that the shortcut should be created under the user StartMenu or Desktop rather than allusers StartMenu or public Desktop.
 
 .PARAMETER ExpandEnvironmentVariables
-    Indicates that environment variables in the shortcut Target, WorkingDirectory, and IconPath should be expanded.
+    Expand environment variables in the shortcut Target, Arguments, WorkingDirectory, and IconPath.
 
 .PARAMETER As32on64
-    When expanding environment variables on a 64-bit system, treat %ProgramFiles% as %ProgramFiles(x86)% and %CommonProgramFiles% as %CommonProgramFiles(x86)%. Use this in conjunction with -ExpandEnvironmentVariables when %ProgramFiles% should be interpreted as C:\Program Files (x86) on a 64-bit OS.
+    Expand %ProgramFiles% and %CommonProgramFiles% as if they were 32-bit on 64-bit systems. Use this in conjunction with -ExpandEnvironmentVariables when %ProgramFiles% should be interpreted as C:\Program Files (x86) on a 64-bit OS.
 
 .PARAMETER Shortcuts
     An array of hashtable entries for creating multiple shortcuts. Each hashtable should include the parameters as keys.
@@ -56,6 +56,16 @@
     .\New-Shortcut.ps1 -Shortcuts @(@{Name="Example1"; Target="C:\Path\To\Target.exe"; Desktop=$true;},@{Name="Example2"; Target="C:\Path\To\Target.exe"; StartMenu=$true; Path="SubFolder"})
 
     This creates two shortcuts, one named "Example1" on the desktop and another named "Example2" in the Start Menu folder named "SubFolder".
+
+.EXAMPLE
+    .\New-Shortcut.ps1 -Path 'MyApp' -Name 'MyApp' -Target "%ProgramFiles%\MyApp\MyApp.exe" -Arguments '/Something' -IconPath "%ProgramFiles%\MyApp\MyApp.exe" -StartMenu -ExpandEnvironmentVariables
+
+    This creates a shortcut named "MyApp" in a Start Menu folder named "MyApp", pointing to the target executable in Program Files, with specified arguments and icon.
+
+.EXAMPLE
+    .\New-Shortcut.ps1 -Path 'MyApp' -Name 'MyApp' -Target "%ProgramFiles%\MyApp\MyApp.exe" -Arguments '/Something' -IconPath "%ProgramFiles%\MyApp\MyApp.exe" -StartMenu -ExpandEnvironmentVariables -As32on64
+
+    This creates a shortcut named "MyApp" in a Start Menu folder named "MyApp", pointing to the target executable in Program Files on a 32-bit OS / Program Files (x86) on a 64-bit OS.
 
 .INPUTS
     You can pipe an array of hashtable entries to New-Shortcut.ps1.
