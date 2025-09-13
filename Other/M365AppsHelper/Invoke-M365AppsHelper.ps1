@@ -230,9 +230,8 @@ function Write-LogHost {
 
 #endregion
 
-# Parameter validation
 if ($OnlineMode -and $NoZip) {
-    # Initialize logging for parameter validation error
+
     $script:LogPath = $LogName
     $logID = "ParameterValidation"
     
@@ -242,7 +241,7 @@ if ($OnlineMode -and $NoZip) {
 }
 
 if ($OnlineMode -and $SkipAPICheck) {
-    # Initialize logging for parameter validation error
+
     $script:LogPath = $LogName
     $logID = "ParameterValidation"
     
@@ -252,6 +251,63 @@ if ($OnlineMode -and $SkipAPICheck) {
 }
 
 #region Configuration Management
+
+function Get-LocaleDisplayName {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$LocaleCodes,
+        [string]$LogID = $MyInvocation.MyCommand.Name
+    )
+    
+    # Compressed locale hashtable
+    $localeHashtable = @{
+        "ar-SA" = "Arabic"; "bg-BG" = "Bulgarian"; "zh-CN" = "Chinese (China)"; "zh-TW" = "Chinese (Taiwan)"; "hr-HR" = "Croatian"; "cs-CZ" = "Czech"
+        "da-DK" = "Danish"; "nl-NL" = "Dutch"; "en-US" = "English"; "en-GB" = "English (United Kingdom)"; "et-EE" = "Estonian"; "fi-FI" = "Finnish"
+        "fr-FR" = "French"; "fr-CA" = "French (Canada)"; "de-DE" = "German"; "el-GR" = "Greek"; "he-IL" = "Hebrew"; "hi-IN" = "Hindi"
+        "hu-HU" = "Hungarian"; "id-ID" = "Indonesian"; "it-IT" = "Italian"; "ja-JP" = "Japanese"; "kk-KZ" = "Kazakh"; "ko-KR" = "Korean"
+        "lv-LV" = "Latvian"; "lt-LT" = "Lithuanian"; "ms-MY" = "Malay"; "nb-NO" = "Norwegian Bokmål"; "pl-PL" = "Polish"; "pt-BR" = "Portuguese (Brazil)"
+        "pt-PT" = "Portuguese (Portugal)"; "ro-RO" = "Romanian"; "ru-RU" = "Russian"; "sr-Latn-RS" = "Serbian (Latin)"; "sk-SK" = "Slovak"; "sl-SI" = "Slovenian"
+        "es-ES" = "Spanish"; "es-MX" = "Spanish (Mexico)"; "sv-SE" = "Swedish"; "th-TH" = "Thai"; "tr-TR" = "Turkish"; "uk-UA" = "Ukrainian"
+        "vi-VN" = "Vietnamese"; "af-ZA" = "Afrikaans"; "sq-AL" = "Albanian"; "hy-AM" = "Armenian"; "as-IN" = "Assamese"; "az-Latn-AZ" = "Azerbaijani (Latin)"
+        "eu-ES" = "Basque"; "bn-BD" = "Bangla (Bangladesh)"; "bn-IN" = "Bangla (India)"; "bs-Latn-BA" = "Bosnian (Latin)"; "ca-ES" = "Catalan"; "gl-ES" = "Galician"
+        "ka-GE" = "Georgian"; "gu-IN" = "Gujarati"; "is-IS" = "Icelandic"; "ga-IE" = "Irish"; "kn-IN" = "Kannada"; "sw-KE" = "Swahili"
+        "kok-IN" = "Konkani"; "ky-KG" = "Kyrgyz"; "lb-LU" = "Luxembourgish"; "mk-MK" = "Macedonian"; "ml-IN" = "Malayalam"; "mt-MT" = "Maltese"
+        "mi-NZ" = "Maori"; "mr-IN" = "Marathi"; "ne-NP" = "Nepali"; "nn-NO" = "Norwegian Nynorsk"; "or-IN" = "Odia"; "fa-IR" = "Persian"
+        "pa-IN" = "Punjabi"; "gd-GB" = "Scottish Gaelic"; "sr-Cyrl-RS" = "Serbian (Cyrillic)"; "sr-Cyrl-BA" = "Serbian (Cyrillic)"; "si-LK" = "Sinhala"; "ta-IN" = "Tamil"
+        "tt-RU" = "Tatar"; "te-IN" = "Telugu"; "ur-PK" = "Urdu"; "uz-Latn-UZ" = "Uzbek"; "ca-ES-VALENCIA" = "Catalan (Valencian)"; "cy-GB" = "Welsh"
+        "ha-Latn-NG" = "Hausa"; "ig-NG" = "Igbo"; "xh-ZA" = "Xhosa"; "zu-ZA" = "Zulu"; "rw-RW" = "Kinyarwanda"; "ps-AF" = "Pashto"
+        "rm-CH" = "Romansh"; "nso-ZA" = "Sesotho sa Leboa"; "tn-ZA" = "Tswana"; "wo-SN" = "Wolof"; "yo-NG" = "Yoruba"
+    }
+    
+    try {
+        $codes = $LocaleCodes -split ',' | ForEach-Object { $_.Trim() }
+    
+        $displayNames = @()
+        foreach ($code in $codes) {
+            if ($localeHashtable.ContainsKey($code)) {
+                $displayNames += $localeHashtable[$code]
+            }
+            else {
+                $displayNames += "$code (Unknown)"
+                Write-Log ("Code {0} not found in locale hashtable" -f $code) -Severity 2 -Component $LogID
+            }
+        }
+
+        if ($displayNames.Count -eq 1) {
+            Write-Log ("Single locale code {0} resolved: {1}" -f $LocaleCodes, $displayNames[0]) -Component $LogID
+            return $displayNames[0]
+            
+        }
+        else {
+            Write-Log ("Multiple locale codes {0} resolved: {1}" -f $LocaleCodes, ($displayNames -join ', ')) -Component $LogID
+            return $displayNames
+        }
+    }
+    catch {
+        Write-LogHost "Error parsing locale codes. Will return original input: {0}" -f $_ -ForegroundColor Red -Severity 3 -Component $LogID
+        return $LocaleCodes
+    }
+}
 
 function Resolve-ConfigXml {
     param(
@@ -266,7 +322,7 @@ function Resolve-ConfigXml {
             return (Resolve-Path -Path $Path).Path 
         }
         else { 
-            Write-LogHost ("The provided configuration XML file was not found at: {0}" -f $Path) -ForegroundColor Red -Severity 3 -Component $LogID
+            Write-Log ("The provided configuration XML file was not found at: {0}" -f $Path) -Severity 3 -Component $LogID
             throw ("The provided configuration XML file was not found at: {0}" -f $Path)
         } 
     }
@@ -274,11 +330,11 @@ function Resolve-ConfigXml {
     $xmlFiles = Get-ChildItem -Path $PSScriptRoot -Filter "*.xml"
 
     if ($xmlFiles.Count -eq 0) { 
-        Write-LogHost ("No XML files found in script directory: {0}" -f $PSScriptRoot) -ForegroundColor Red -Severity 3 -Component $LogID
+        Write-Log ("No XML files found in script directory: {0}" -f $PSScriptRoot) -Severity 3 -Component $LogID
         throw ("No XML files found in script directory: {0}" -f $PSScriptRoot)
     }
     if ($xmlFiles.Count -gt 1) {
-        Write-Log ("Multiple XML files found in {0}. Specify -ConfigXML" -f $PSScriptRoot) -ForegroundColor Red -Severity 3 -Component $LogID
+        Write-Log ("Multiple XML files found in {0}. Specify -ConfigXML" -f $PSScriptRoot) -Severity 3 -Component $LogID
         throw ("Multiple XML files found in {0}. Specify -ConfigXML" -f $PSScriptRoot)
     }
 
@@ -583,18 +639,28 @@ function Get-ValidOfficeVersion {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
-        [ValidateSet('Current', 'CurrentPreview', 'MonthlyEnterprise', 'SemiAnnual', 'SemiAnnualPreview')]
         [string]$Channel,
         [Parameter(Mandatory = $true)]
         [ValidatePattern('^https?://.+')]
         [string]$VersionUrl,
         [string]$CurrentVersion,
+        [string]$StagingDir = ".\Staging",
         [string]$LogID = $($MyInvocation.MyCommand).Name
     )
     
     try {
         Write-Log ("Validating Office version for channel {0}" -f $Channel) -Component $LogID
-        $versionInfo = Get-OfficeVersionInfo -Channel $Channel -VersionUrl $VersionUrl -CurrentVersion $CurrentVersion -RetryDelaySeconds $script:ApiRetryDelaySeconds -MaxExtendedAttempts $script:ApiMaxExtendedAttempts
+        
+        if ($script:OfficeApiData) {
+            Write-Log ("Using cached Office API data") -Component $LogID
+            $apiData = $script:OfficeApiData
+        }
+        else {
+            Write-Log ("Fetching fresh Office API data") -Component $LogID
+            $apiData = Get-OfficeApiData -VersionUrl $VersionUrl -StagingDir $StagingDir -RetryDelaySeconds $script:ApiRetryDelaySeconds -MaxExtendedAttempts $script:ApiMaxExtendedAttempts
+        }
+
+        $versionInfo = Get-ChannelVersionInfo -Channel $Channel -OfficeApiData $apiData -CurrentVersion $CurrentVersion -LogID $LogID
         
         if (-not $versionInfo) {
             Write-LogHost ("Could not retrieve version information for channel {0}" -f $Channel) -ForegroundColor Red -Severity 3 -Component $LogID
@@ -602,9 +668,7 @@ function Get-ValidOfficeVersion {
         }
         
         if (-not [string]::IsNullOrWhiteSpace($CurrentVersion)) {
-            $isValidVersion = $CurrentVersion -in $versionInfo.AllVersions
-            
-            if ($isValidVersion) {
+            if ($versionInfo.CurrentVersionValid) {
                 Write-LogHost ("Current XML version {0} is valid for channel {1}" -f $CurrentVersion, $Channel) -ForegroundColor Green -Component $LogID
                 return $CurrentVersion
             }
@@ -669,72 +733,48 @@ function Get-ValidOfficeVersion {
     }
 }
 
-function Get-OfficeVersionInfo {
+function Get-OfficeApiData {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
-        [ValidateSet('Current', 'CurrentPreview', 'MonthlyEnterprise', 'SemiAnnual', 'SemiAnnualPreview')]
-        [string]$Channel,
-        [Parameter(Mandatory = $true)]
         [ValidatePattern('^https?://.+')]
         [string]$VersionUrl,
-        [string]$CurrentVersion,
+        [string]$StagingDir = ".\Staging",
         [int]$RetryDelaySeconds = 3,
         [int]$MaxExtendedAttempts = 10,
         [string]$LogID = $($MyInvocation.MyCommand).Name
     )
     
     try {
-        Write-Log ("Querying Office version information for channel: {0}" -f $Channel) -Component $LogID
-        Write-Progress -Id 1001 -Activity "Validating Office Version" -Status "Connecting to Microsoft Office API..." -PercentComplete 0
-        Write-LogHost ("Calling Office version endpoint for channel '{0}'" -f $Channel) -ForegroundColor White -Component $LogID
+        Write-LogHost "Querying Office version information..." -Component $LogID
+        Write-Progress -Id 1001 -Activity "Downloading Office API Data" -Status "Connecting to Microsoft Office endpoint..." -PercentComplete 0
         Write-LogHost ("API URL: {0}" -f $VersionUrl) -ForegroundColor White -Component $LogID
         Write-Log ("Starting API retry mechanism: up to {0} attempts" -f $MaxExtendedAttempts) -Component $LogID
         
         $bestResponse = $null
         $bestResponseSize = 0
-        $hasCompleteResponse = $false
-        $bestVersions = @()
         
         for ($attempt = 1; $attempt -le $MaxExtendedAttempts; $attempt++) {
             try {
                 $progressPercent = [Math]::Round(($attempt / $MaxExtendedAttempts) * 100)
-                Write-Progress -Id 1001 -Activity "Validating Office Version" -Status "API attempt $attempt of $MaxExtendedAttempts..." -PercentComplete $progressPercent
+                Write-Progress -Id 1001 -Activity "Downloading Office API Data" -Status "API attempt $attempt of $MaxExtendedAttempts..." -PercentComplete $progressPercent
                 
                 Write-Log ("Making API call (attempt {0} of {1})" -f $attempt, $MaxExtendedAttempts) -Component $LogID
                 $webResponse = Invoke-WebRequest -Uri $VersionUrl -UseBasicParsing
                 $response = $webResponse.Content | ConvertFrom-Json
                 
                 Write-Log ("API Response Status: {0}, Content Length: {1} characters (attempt {2})" -f $webResponse.StatusCode, $webResponse.Content.Length, $attempt) -Component $LogID
-                $targetChannelData = $response | Where-Object { $_.channelId -eq $Channel }
-                $targetChannelVersions = 0
-                $isTargetChannelComplete = $false
-                $currentVersions = @()
                 
-                if ($targetChannelData -and $targetChannelData.officeVersions) {
-                    $allVersions = $targetChannelData.officeVersions | Where-Object { $_.legacyVersion } | ForEach-Object { $_.legacyVersion }
-                    $uniqueVersionsForChannel = $allVersions | Select-Object -Unique
-                    $currentVersions = $uniqueVersionsForChannel | Sort-Object -Descending
-                    $targetChannelVersions = $currentVersions.Count
-                    $isTargetChannelComplete = $targetChannelVersions -ge 3
-                }
-                
-                Write-Log ("Attempt {0}: Channel '{1}' has {2} unique versions" -f $attempt, $Channel, $targetChannelVersions) -Component $LogID
-                
-                if ($targetChannelVersions -gt $bestResponseSize) {
+                $totalChannels = $response.Count
+                if ($totalChannels -gt $bestResponseSize) {
                     $bestResponse = $response
-                    $bestResponseSize = $targetChannelVersions
-                    $bestVersions = $currentVersions
-                    Write-Log ("New best response found: {0} versions for channel '{1}' (attempt {2})" -f $targetChannelVersions, $Channel, $attempt) -Component $LogID
+                    $bestResponseSize = $totalChannels
+                    Write-Log ("New best response found: {0} channels (attempt {1})" -f $totalChannels, $attempt) -Component $LogID
                 }
 
-                if ($isTargetChannelComplete) {
-                    $hasCompleteResponse = $true
-                    Write-Log ("Complete response found for channel '{0}' with {1} versions (attempt {2})" -f $Channel, $targetChannelVersions, $attempt) -Component $LogID
+                if ($totalChannels -ge 5) {
+                    Write-Log ("Good response found with {0} channels (attempt {1})" -f $totalChannels, $attempt) -Component $LogID
                     break
-                }
-                else {
-                    Write-Log ("Incomplete response detected for channel '{0}' - continuing with remaining attempts" -f $Channel) -Severity 2 -Component $LogID
                 }
                 
                 if ($attempt -lt $MaxExtendedAttempts) {
@@ -755,135 +795,158 @@ function Get-OfficeVersionInfo {
             }
         }
         
-        Write-Progress -Id 1001 -Activity "Validating Office Version" -Completed
-        Start-Sleep -Milliseconds 100
-        Write-Host "API validation completed successfully" -ForegroundColor Green
+        Write-Progress -Id 1001 -Activity "Downloading Office API Data" -Completed
+        Write-Host "API data downloaded successfully" -ForegroundColor Green
         
         if (-not $bestResponse) {
             throw "Failed to get any valid response after $MaxExtendedAttempts attempts"
         }
         
-        if (-not $hasCompleteResponse -and $bestResponseSize -lt 3) {
-
-            if ([string]::IsNullOrWhiteSpace($CurrentVersion)) {
-                Write-LogHost ("API returned incomplete data ({0} versions) for channel '{1}', but no version was specified in XML. Using the highest version found: {2}" -f $bestResponseSize, $Channel, ($bestVersions | Select-Object -First 1)) -ForegroundColor Yellow -Severity 2 -Component $LogID
-            }
-            else {
-                do {
-                    Write-Host ""
-                    Write-Host ("API returned incomplete data ({0} versions). Choose an option:" -f $bestResponseSize) -ForegroundColor Yellow
-                    Write-Host "  1 - Retry another 10 attempts to get complete version data"
-                    Write-Host "  2 - Continue with current incomplete data"
-                    Write-Host "  Q - Quit script execution"
-                    Write-Host ""
-                    $retryResponse = Read-Host "Enter your choice (1, 2, or Q)"
-
-                    switch ($retryResponse.ToUpper()) {
-                        "1" { 
-                            Write-LogHost ("User chose to retry API calls for better data") -ForegroundColor Green -Component $logID
-                            Write-Log ("Retrying API calls with fresh attempt counter") -Component $logID
-                            return Get-OfficeVersionInfo -Channel $Channel -VersionUrl $VersionUrl -CurrentVersion $CurrentVersion -RetryDelaySeconds $RetryDelaySeconds -MaxExtendedAttempts $MaxExtendedAttempts -LogID $LogID
-                        }
-                        "2" { 
-                            Write-LogHost ("User chose to continue with incomplete version data") -ForegroundColor Yellow -Component $logID
-                            $validRetryChoice = $true
-                        }
-                        "Q" { 
-                            Write-LogHost ("User chose to quit due to incomplete API data") -ForegroundColor Yellow -Component $logID
-                            exit 0 
-                        }
-                        default { 
-                            Write-Host ("Invalid choice. Please enter 1, 2, or Q.") -ForegroundColor Red
-                            $validRetryChoice = $false
-                        }
-                    }
-                } while (-not $validRetryChoice)
-            }
-        }
-        
-        if (-not $hasCompleteResponse) {
-            Write-LogHost ("Using best available response with {0} versions after {1} attempts" -f $bestResponseSize, $MaxExtendedAttempts) -ForegroundColor Yellow -Severity 2 -Component $logID
-        }
-        
-        Write-Log ("Using response with {0} unique versions" -f $bestResponseSize) -Component $LogID
-        $response = $bestResponse
-        
         try {
-            $stagingDir = ".\Staging"
-
-            if (-not (Test-Path $stagingDir)) {
-                New-Item -ItemType Directory -Path $stagingDir -Force | Out-Null
-                Write-Log ("Created staging directory for JSON response: {0}" -f $stagingDir) -Component $LogID
+            if (-not (Test-Path $StagingDir)) {
+                New-Item -ItemType Directory -Path $StagingDir -Force | Out-Null
+                Write-Log ("Created staging directory for JSON response: {0}" -f $StagingDir) -Component $LogID
             }
             $jsonFileName = "OfficeVersions_Latest.json"
-            $jsonFilePath = Join-Path $stagingDir $jsonFileName
-            $response | ConvertTo-Json -Depth 20 | Out-File -FilePath $jsonFilePath -Encoding UTF8 -Force
+            $jsonFilePath = Join-Path $StagingDir $jsonFileName
+            $bestResponse | ConvertTo-Json -Depth 20 | Out-File -FilePath $jsonFilePath -Encoding UTF8 -Force
             Write-LogHost ("Saved Office version JSON to: {0}" -f $jsonFilePath) -ForegroundColor Green -Component $LogID
         }
         catch {
             Write-Log ("Failed to save JSON response to staging: {0}" -f $_.Exception.Message) -Severity 2 -Component $LogID
         }
         
-        $allChannels = @()
-        foreach ($channelData in $response) {
+        Write-Log ("API call completed successfully with {0} channels" -f $bestResponse.Count) -Component $LogID
+        return $bestResponse
+    }
+    catch {
+        Write-LogHost ("Failed to retrieve Office API data: {0}" -f $_.Exception.Message) -ForegroundColor Red -Severity 3 -Component $LogID
+        throw $_
+    }
+}
 
-            $allVersionsForChannel = @()
-            if ($channelData.officeVersions -and $channelData.officeVersions.Count -gt 0) {
-                foreach ($update in $channelData.officeVersions) {
-                    if ($update.legacyVersion) {
-                        $allVersionsForChannel += $update.legacyVersion
-                    }
+function Test-OfficeChannelValid {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Channel,
+        [Parameter(Mandatory = $false)]
+        [object[]]$OfficeApiData,
+        [string]$StagingDir = ".\Staging",
+        [string]$LogID = $($MyInvocation.MyCommand).Name
+    )
+    
+    $validChannels = @()
+    
+    
+    if ($OfficeApiData) {
+        Write-Log ("Using provided API data with {0} channels" -f $OfficeApiData.Count) -Component $LogID
+        $apiData = $OfficeApiData
+    }
+    else {
+        
+        $jsonPath = Join-Path $StagingDir "OfficeVersions_Latest.json"
+        if (Test-Path $jsonPath) {
+            try {
+                Write-Log ("Reading channel data from JSON: {0}" -f $jsonPath) -Component $LogID
+                $jsonContent = Get-Content -Path $jsonPath -Raw | ConvertFrom-Json
+                $apiData = $jsonContent
+                Write-Log ("Loaded {0} channels from JSON file" -f $apiData.Count) -Component $LogID
+            }
+            catch {
+                Write-Log ("Failed to read JSON file: {0}" -f $_.Exception.Message) -Severity 2 -Component $LogID
+                $apiData = $null
+            }
+        }
+        else {
+            Write-Log ("JSON file not found at {0}" -f $jsonPath) -Severity 2 -Component $LogID
+            $apiData = $null
+        }
+    }
+    
+    if ($apiData) {
+        
+        foreach ($channelData in $apiData) {
+            if ($channelData.channelId) {
+                $validChannels += $channelData.channelId
+                
+                if ($channelData.alternateNames -and $channelData.alternateNames.Count -gt 0) {
+                    $validChannels += $channelData.alternateNames
                 }
             }
-            $uniqueVersions = $allVersionsForChannel | Select-Object -Unique | Sort-Object -Descending
-            $channelInfo = [PSCustomObject]@{
-                Channel                = $channelData.channelId
-                DisplayName            = $channelData.channel
-                LatestVersion          = $channelData.latestVersion
-                AllVersions            = $uniqueVersions
-                RawUpdatesCount        = $channelData.officeVersions.Count
-                ExtractedVersionsCount = $allVersionsForChannel.Count
-            }
-            
-            $allChannels += $channelInfo
         }
+
+        $validChannels = $validChannels | Select-Object -Unique | Sort-Object
+        Write-Log ("Extracted {0} valid channels from API data: {1}" -f $validChannels.Count, ($validChannels -join ', ')) -Component $LogID
+    }
+    
+    $isValid = $Channel -in $validChannels
+    Write-Log ("Channel '{0}' validation result: {1}" -f $Channel, $isValid) -Component $LogID
+    
+    return [PSCustomObject]@{
+        IsValid       = $isValid
+        ValidChannels = $validChannels
+        TestedChannel = $Channel
+    }
+}
+
+function Get-ChannelVersionInfo {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Channel,
+        [Parameter(Mandatory = $true)]
+        [object[]]$OfficeApiData,
+        [string]$CurrentVersion,
+        [string]$LogID = $($MyInvocation.MyCommand).Name
+    )
+    
+    try {
+        Write-Log ("Processing version information for channel '{0}'" -f $Channel) -Component $LogID
         
-        $targetChannel = $allChannels | Where-Object { $_.Channel -eq $Channel }
+        $targetChannelData = $OfficeApiData | Where-Object { $_.channelId -eq $Channel }
         
-        if (-not $targetChannel) {
-            Write-LogHost ("Channel '{0}' not found in available channels" -f $Channel) -ForegroundColor Red -Severity 3 -Component $LogID
+        if (-not $targetChannelData) {
+            Write-LogHost ("Channel '{0}' not found in API data" -f $Channel) -ForegroundColor Red -Severity 3 -Component $LogID
             return $null
         }
         
-        $versionsCompressed = $targetChannel.AllVersions -join ';'
-        Write-Log ("Target Channel '{0}': Latest={1}, UpdatesCount={2}, UniqueVersions={3}, AllVersions=[{4}]" -f $targetChannel.Channel, $targetChannel.LatestVersion, $targetChannel.RawUpdatesCount, $targetChannel.AllVersions.Count, $versionsCompressed) -Component $LogID 
-        Write-LogHost ("The latest version for channel '{0}' is {1}" -f $Channel, $targetChannel.LatestVersion) -ForegroundColor Green -Component $LogID
-        Write-Log ("Target channel '{0}' has {1} total versions available" -f $Channel, $targetChannel.AllVersions.Count) -Component $LogID
-        $isValidVersion = $false
-
+        $allVersionsForChannel = @()
+        if ($targetChannelData.officeVersions -and $targetChannelData.officeVersions.Count -gt 0) {
+            foreach ($update in $targetChannelData.officeVersions) {
+                if ($update.legacyVersion) {
+                    $allVersionsForChannel += $update.legacyVersion
+                }
+            }
+        }
+        $uniqueVersions = $allVersionsForChannel | Select-Object -Unique | Sort-Object -Descending
+        
+        $channelInfo = [PSCustomObject]@{
+            Channel             = $targetChannelData.channelId
+            DisplayName         = $targetChannelData.channel
+            LatestVersion       = $targetChannelData.latestVersion
+            AllVersions         = $uniqueVersions
+            CurrentVersionValid = $false
+            CurrentVersion      = $CurrentVersion
+            TotalVersionsCount  = $uniqueVersions.Count
+        }
+        
         if (-not [string]::IsNullOrWhiteSpace($CurrentVersion)) {
-            $isValidVersion = $CurrentVersion -in $targetChannel.AllVersions
+            $channelInfo.CurrentVersionValid = $CurrentVersion -in $uniqueVersions
             
-            if ($isValidVersion) {
-                Write-LogHost ("The Office version defined in the XML '{0}' is valid for channel '{1}'" -f $CurrentVersion, $Channel) -ForegroundColor Green -Component $LogID
+            if ($channelInfo.CurrentVersionValid) {
+                Write-LogHost ("Version '{0}' is valid for channel '{1}'" -f $CurrentVersion, $Channel) -ForegroundColor Green -Component $LogID
             }
             else {
-                Write-LogHost ("The Office version defined in the XML '{0}' is NOT valid for channel '{1}'" -f $CurrentVersion, $Channel) -ForegroundColor Yellow -Severity 2 -Component $LogID
+                Write-LogHost ("Version '{0}' is NOT valid for channel '{1}'" -f $CurrentVersion, $Channel) -ForegroundColor Yellow -Severity 2 -Component $LogID
             }
         }
         
-        return [PSCustomObject]@{
-            Channel             = $targetChannel.Channel
-            DisplayName         = $targetChannel.DisplayName
-            LatestVersion       = $targetChannel.LatestVersion
-            AllVersions         = $targetChannel.AllVersions
-            CurrentVersionValid = $isValidVersion
-            CurrentVersion      = $CurrentVersion
-            TotalVersionsCount  = $targetChannel.AllVersions.Count
-        }
+        Write-Log ("Channel '{0}': Latest={1}, TotalVersions={2}" -f $Channel, $channelInfo.LatestVersion, $channelInfo.TotalVersionsCount) -Component $LogID
+        return $channelInfo
     }
     catch {
-        Write-LogHost ("Failed to query Office version information for channel '{0}': {1}" -f $Channel, $_.Exception.Message) -ForegroundColor Red -Severity 3 -Component $LogID
+        Write-LogHost ("Failed to process channel version info: {0}" -f $_.Exception.Message) -ForegroundColor Red -Severity 3 -Component $LogID
         return $null
     }
 }
@@ -962,7 +1025,6 @@ function New-ZipFromDirectory {
         [System.IO.Compression.ZipFile]::CreateFromDirectory($SourcePath, $ZipPath, [System.IO.Compression.CompressionLevel]::$CompressionLevel, $false)
         
         if ([System.IO.File]::Exists($ZipPath)) {
-            $zipInfo = Get-Item -Path $ZipPath
             return $ZipPath
         }
         else {
@@ -1232,13 +1294,11 @@ function New-PatchMyPCInstructions {
         $hasOfficeZip = Test-Path -Path "$OutputPath\Office.zip"
         $hasOfficeFolder = Test-Path -Path "$OutputPath\Office"
         $fileSection = switch ($true) {
-            $hasOfficeFolder { "Add Primary Install File: setup.exe`nAdd Folders: Office" }
-            $hasOfficeZip { "Add Primary Install File: setup.exe`nAdd Files: Office.zip" }
-            default { "Add Primary Install File: setup.exe" }
+            $hasOfficeFolder { "Add Primary Install File: setup.exe`nAdd Folders: Office`nAdd Files: Configuration.xml" }
+            $hasOfficeZip { "Add Primary Install File: setup.exe`nAdd Files: Office.zip, Configuration.xml" }
+            default { "Add Primary Install File: setup.exe`nAdd Files: Configuration.xml" }
         }
-        $notesSection = if ($CustomApp.Notes -and -not [string]::IsNullOrWhiteSpace($CustomApp.Notes)) {
-            "Notes: $($CustomApp.Notes)`n"
-        }
+        $notesSection = "Notes: $($CustomApp.Notes)`n"
 
         $deployHeader = @"
 ################################################
@@ -1340,19 +1400,21 @@ $deploySection
 function Get-OfficeAppName {
     param(
         [Parameter(Mandatory = $true)]
-        [string]$ProductID,
+        [string]$Product,
         [string]$LogID = $($MyInvocation.MyCommand).Name
     )
     
-    $appName = switch ($ProductID) {
+    $appName = switch -Wildcard ($Product) {
         "O365ProPlusRetail" { "Microsoft 365 Apps for Enterprise" }
         "O365ProPlusEEANoTeamsRetail" { "Microsoft 365 Apps for Enterprise (No Teams)" }
         "O365BusinessRetail" { "Microsoft 365 Apps for Business" }
         "O365BusinessEEANoTeamsRetail" { "Microsoft 365 Apps for Business (No Teams)" }
-        default { "Microsoft 365 Apps" }
+        "*2024*" { "Office 2024 Perpetual Enterprise" }
+        "*2021*" { "Office 2021 Perpetual Enterprise" }
+        "*2019*" { "Office 2019 Perpetual Enterprise" }
     }
     
-    Write-Log ("Mapped Product ID '{0}' to app name '{1}'" -f $ProductID, $appName) -Component $LogID
+    Write-Log ("Mapped Product ID '{0}' to app name '{1}'" -f $Product, $appName) -Component $LogID
     return $appName
 }
 
@@ -1365,7 +1427,7 @@ function Get-OfficeDescription {
         [string]$LogID = $($MyInvocation.MyCommand).Name
     )
     
-    $baseDescription = "Microsoft 365 Apps provides always-up-to-date versions of Word, Excel, PowerPoint, Outlook, OneNote"
+    $baseDescription = "Office provides always-up-to-date versions of Word, Excel, PowerPoint, Outlook, OneNote"
     $teamsInfo = if ($ProductID -match "NoTeams" -or $AppName -match "No Teams") {
         ""
     }
@@ -1435,6 +1497,7 @@ function New-PatchMyPCCustomApp {
     )
     
     try {
+
         Write-Log ("Creating Patch My PC custom app object") -Component $LogID
         $xmlPath = Join-Path $OutputPath $XmlFileName
         if (-not (Test-Path $xmlPath)) {
@@ -1446,74 +1509,81 @@ function New-PatchMyPCCustomApp {
         $productNodes = @($addNode.Product)
         $productIds = $productNodes | ForEach-Object { $_.ID }
         $versions = $addNode.Version
+        $channel = $addNode.Channel
         $architecture = $addNode.OfficeClientEdition
+
+        if ($productIds -is [array]) {
+            $mainAppName = Get-OfficeAppName -Product $productIds[0] -LogID $LogID
+        }
+        else {
+            $mainAppName = Get-OfficeAppName -Product $productIds -LogID $LogID
+        }
+        
+        $addonNames = @()
+        if ($productIds.Count -gt 1) {
+            $addonNames = $productIds[1..($productIds.Count - 1)]
+        }
+        
+        $appNameStr = $mainAppName
+        if ($addonNames.Count -gt 0) {
+            $appNameStr += " + " + ($addonNames -join " + ")
+        }
+        
         $languages = $productNodes | ForEach-Object { @($_.Language) | ForEach-Object { $_.ID } }
         $languages = $languages | Where-Object { $_ } | Select-Object -Unique
         
         if (-not $languages) { 
             $languages = @("MatchOS")
         }
-
-        $appNames = $productIds | ForEach-Object { Get-OfficeAppName -ProductID $_ -LogID $LogID }
-        $mainIdx = ($productIds | Select-String -Pattern '^O365' | Select-Object -First 1).LineNumber - 1
         
-        if ($mainIdx -lt 0) { 
-            $mainIdx = 0 
+        if ($languages -is [array]) {
+            $mainLang = $languages[0]
+        }
+        else {
+            $mainLang = $languages
         }
 
-        $mainAppName = $appNames[$mainIdx]
-        $addonNames = @()
-
-        for ($i = 0; $i -lt $productIds.Count; $i++) {
-            if ($i -ne $mainIdx) {
-                $addonName = $appNames[$i]
-                if ($addonName -eq "Microsoft  365 Apps") {
-                    $addonName = $productIds[$i]
-                }
-                $addonNames += $addonName
-            }
+        if ($mainLang -eq "MatchOS") {
+            $mainLangDisplayName = $mainLang
         }
-
-        $appNameStr = $mainAppName
-        if ($addonNames.Count -gt 0) {
-            $appNameStr += " + " + ($addonNames -join " + ")
+        else {
+            $mainLangDisplayName = Get-LocaleDisplayName -LocaleCodes $mainLang -LogID $LogID
         }
-
-        $mainLang = $languages
-        if ($mainLang -is [array]) {
-            $mainLang = $mainLang[0]
-        }
-        if (-not $mainLang) {
-            $mainLang = "MatchOS"
+        
+        $notesLanguage = $null
+        if ($languages.Count -gt 1) {
+            $langList = $languages -join ", "
+            $notesLanguage = Get-LocaleDisplayName -LocaleCodes $langList -LogID $LogID
+            $notesLanguage = $notesLanguage -join ", "
         }
 
         $displayNameStr = Get-OfficeDisplayName -AppName $mainAppName -Language $mainLang -LogID $LogID
-
-        $productIdStr = $productIds -join ", "
-        $languageStr = $languages -join ", "
-
         Get-OfficeIcon -OutputPath $OutputPath -IconUrl $IconUrl -LogID $LogID | Out-Null
+
         $customApp = [PSCustomObject]@{
             AppName                 = $appNameStr
             AppIcon                 = "Microsoft.png"
             Vendor                  = "Microsoft"
-            Description             = "Microsoft 365 Apps provides always-up-to-date versions of Word, Excel, PowerPoint, Outlook, OneNote, and more. It delivers the familiar Office experience across PCs, Macs, tablets, and mobile devices with seamless access to files in OneDrive and SharePoint."
+            Description             = "Office provides always-up-to-date versions of Word, Excel, PowerPoint, Outlook, OneNote, and more. It delivers the familiar Office experience across PCs, Macs, tablets, and mobile devices with seamless access to files in OneDrive and SharePoint."
+            Notes                   = "Product ID: $($productIds -join ', '). Office Channel: $channel"
             InstallContext          = "System"
             Architecture            = $architecture
             Version                 = $versions
-            Language                = $mainLang
+            Language                = $mainLangDisplayName
             AppsAndFeaturesName     = $displayNameStr
             ConflictingProcesses    = "winword.exe,excel.exe,powerpnt.exe,msaccess.exe,mspub.exe,outlook.exe,onenote.exe"
             SilentInstallParameters = if ($XmlFileName -match '\s') { "/configure `"$XmlFileName`"" } else { "/configure $XmlFileName" }
-            ProductId               = $productIdStr
             XmlFileName             = $XmlFileName
         }
 
-        if ($languages.Count -gt 1) {
-            Add-Member -InputObject $customApp -NotePropertyName Notes -NotePropertyValue ("This Office package has support for the following languages: {0}" -f $languageStr)
+        if ($notesLanguage) {
+            $customApp.Notes += ". Additional Languages: {0}" -f $notesLanguage
+        }
+        if ($mainLangDisplayName -eq "MatchOS" ) {
+            $customApp.Notes += ". Detection Information: As the language is set to 'MatchOS', we cannot use an exact Display Name for detection. The Apps & Features name contain a '%' wildcard to match any language."
         }
 
-        Write-Log ("Created custom app object for Product ID(s): {0}, Version: {1}, Architecture: {2}" -f $productIdStr, $versions, $architecture) -Component $LogID
+        Write-Log ("Created custom app object for Product ID(s): {0}, Version: {1}, Architecture: {2}" -f ($productIds -join ", "), $versions, $architecture) -Component $LogID
         return $customApp
     }
     catch {
@@ -1536,9 +1606,7 @@ function Show-PatchMyPCCustomAppInfo {
     Write-Host ("App Icon: {0}" -f $CustomApp.AppIcon)
     Write-Host ("Vendor: {0}" -f $CustomApp.Vendor)
     Write-Host ("Description: {0}" -f $CustomApp.Description)
-    if ($CustomApp.Notes) {
-        Write-Host ("Notes: {0}" -f $CustomApp.Notes)
-    }
+    Write-Host ("Notes: {0}" -f $CustomApp.Notes)
     Write-Host ""
     Write-Host "=== Configuration Tab ===" -ForegroundColor Green
     Write-Host ("Install Context: {0}" -f $CustomApp.InstallContext)
@@ -1690,6 +1758,20 @@ function Invoke-Main {
         throw ("Unable to set TLS version to 1.2 for downloads at line {0}: {1}" -f $_.InvocationInfo.ScriptLineNumber, $_.Exception.Message)
     }
 
+    # Get Office API data early for channel validation (unless we're skipping API checks)
+    if (-not $SkipAPICheck) {
+        try {
+            Write-LogHost ("Downloading Office channel information for validation...") -Component $LogID
+            $script:OfficeApiData = Get-OfficeApiData -VersionUrl $OfficeVersionUrl -StagingDir $StagingDir -RetryDelaySeconds $ApiRetryDelaySeconds -MaxExtendedAttempts $ApiMaxExtendedAttempts
+            Write-Log ("Office API data cached for channel validation") -Component $LogID
+        }
+        catch {
+            Write-Log ("Failed to download Office API data early: {0}" -f $_.Exception.Message) -Severity 2 -Component $LogID
+            Write-LogHost ("Will skip early channel validation and validate during version check") -ForegroundColor Yellow -Severity 2 -Component $LogID
+            $script:OfficeApiData = $null
+        }
+    }
+
     # Always resolve and parse the config FIRST, before any staging logic
     $resolvedConfig = Resolve-ConfigXml -Path $ConfigXml
     $xmlFileName = [System.IO.Path]::GetFileName($resolvedConfig)
@@ -1711,11 +1793,11 @@ function Invoke-Main {
         }
         
         # Validate channel value
-        $validChannels = @('Current', 'CurrentPreview', 'MonthlyEnterprise', 'SemiAnnual', 'SemiAnnualPreview')
-        if ($xmlData.Configuration.Add.Channel -notin $validChannels) {
-            Write-LogHost ("Invalid channel '{0}' specified in XML" -f $xmlData.Configuration.Add.Channel) -ForegroundColor Red -Severity 3 -Component $LogID
-            Write-LogHost ("Valid channels are: {0}" -f ($validChannels -join ', ')) -ForegroundColor Yellow -Severity 2 -Component $LogID
-            Write-LogHost ("Please validate your XML configuration at: https://config.office.com") -ForegroundColor Cyan -Component $LogID
+        $channelValidation = Test-OfficeChannelValid -Channel $xmlData.Configuration.Add.Channel -StagingDir $StagingDir
+        if (-not $channelValidation.IsValid) {
+            Write-LogHost ("Invalid channel '{0}' specified in XML" -f $xmlData.Configuration.Add.Channel) -ForegroundColor Red -Severity 3 -Component $logID
+            Write-LogHost ("Valid channels are: {0}" -f ($channelValidation.ValidChannels -join ', ')) -ForegroundColor Red -Severity 2 -Component $logID
+            Write-LogHost ("Please validate your XML configuration at: https://config.office.com") -ForegroundColor Red -Component $logID
             throw ("Invalid channel specified in XML: {0}" -f $xmlData.Configuration.Add.Channel)
         }
         
@@ -1723,7 +1805,7 @@ function Invoke-Main {
     }
     catch {
         Write-LogHost ("XML configuration validation failed: {0}" -f $_.Exception.Message) -ForegroundColor Red -Severity 3 -Component $LogID
-        Write-LogHost ("Please check your XML configuration at: https://config.office.com") -ForegroundColor Cyan -Component $LogID
+        Write-LogHost ("Please check your XML configuration at: https://config.office.com") -ForegroundColor Red -Component $LogID
         throw ("Invalid XML configuration: {0}" -f $_.Exception.Message)
     }
     
@@ -1786,6 +1868,27 @@ function Invoke-Main {
     # Log the compressed XML configuration data for debugging
     $compressedXmlConfig = ($configInfo | ConvertTo-Json -Depth 10 -Compress)
     Write-Log ("XML Configuration (compressed): {0}" -f $compressedXmlConfig) -Component $LogID
+
+    # Abort if the Display Level is not set to None
+    $configInfo = Get-OfficeConfigInfo -XmlData $xmlData
+
+    # Validate that Display Level is set to None for silent installation
+    if ($configInfo.Display_Level -ne "None") {
+        Write-LogHost ("Warning: Office installation is not configured for silent deployment") -ForegroundColor Red -Severity 3 -Component $LogID
+        Write-LogHost ("Current Display Level: {0}" -f ($configInfo.Display_Level ?? "Not specified")) -ForegroundColor Yellow -Severity 2 -Component $LogID
+        Write-Host ("  1. Go to https://config.office.com") -ForegroundColor Yellow
+        Write-Host ("  2. Load your existing configuration") -ForegroundColor Yellow
+        Write-Host ("  3. Under 'Installation preferences', toggle OFF 'Show installation to user'") -ForegroundColor Yellow
+        Write-Host ("  4. This will set Display Level='None' for automated deployment") -ForegroundColor Yellow
+        Write-Host ("  5. Export and use the updated XML configuration") -ForegroundColor Yellow
+    
+        throw "Office XML configuration error: Display Level must be set to 'None' for silent installation"
+    }
+
+    Write-LogHost ("Display Level validation passed: Silent installation configured") -ForegroundColor Green -Component $LogID
+
+    # Your existing display code continues here...
+    Write-LogHost ("Current XML Configuration:") -ForegroundColor Green -Component $LogID
     
     # Handle version management - check if XML has version, get latest online if needed
     Write-Log ("Version management: SkipAPICheck={0}, XML Version='{1}'" -f $SkipAPICheck, $configInfo.Version) -Component $LogID
@@ -1805,7 +1908,6 @@ function Invoke-Main {
         }
         
         # Get valid version to use
-        Write-LogHost ("No version specified in XML. Getting latest Office version online for channel: {0}" -f $configInfo.Channel) -Component $LogID
         $validVersion = Get-ValidOfficeVersion -Channel $configInfo.Channel -VersionUrl $OfficeVersionUrl -CurrentVersion ""
         
         if ($validVersion) {
@@ -2043,7 +2145,8 @@ function Invoke-Main {
     # Create the properly named folder with build version and determine mode suffix based on compression
     $modeSuffix = if ($NoZip) { 
         "OfflineMode" 
-    } else { 
+    }
+    else { 
         "OfflineModeCompressed"
     }
 
