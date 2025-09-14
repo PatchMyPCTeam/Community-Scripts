@@ -1,7 +1,7 @@
 <#
 .Synopsis
 Created on:   07/09/2025
-Updated on:   12/09/2025
+Updated on:   14/09/2025
 Created by:   Ben Whitmore@PatchMyPC
 Filename:     Invoke-M365AppsHelper.ps1
 
@@ -673,7 +673,6 @@ function Get-ValidOfficeVersion {
                 return $CurrentVersion
             }
             else {
-
                 Write-LogHost ("The version '{0}' specified in your XML is NOT valid for channel '{1}'" -f $CurrentVersion, $Channel) -ForegroundColor Red -Severity 3 -Component $LogID
                 Write-LogHost ("You can select a valid version below but your XML configuration might be out-dated. Re-validate it at https://config.office.com") -ForegroundColor Yellow -Component $LogID
                 Write-Host ""
@@ -1530,7 +1529,7 @@ function New-PatchMyPCCustomApp {
         }
         
         $languages = $productNodes | ForEach-Object { @($_.Language) | ForEach-Object { $_.ID } }
-        $languages = $languages | Where-Object { $_ } | Select-Object -Unique
+        $languages = $languages | Where-Object { $_ -and $_ -notin @("MatchPreviousMSI") } | Select-Object -Unique
         
         if (-not $languages) { 
             $languages = @("MatchOS")
@@ -1869,24 +1868,6 @@ function Invoke-Main {
     $compressedXmlConfig = ($configInfo | ConvertTo-Json -Depth 10 -Compress)
     Write-Log ("XML Configuration (compressed): {0}" -f $compressedXmlConfig) -Component $LogID
 
-    # Abort if the Display Level is not set to None
-    $configInfo = Get-OfficeConfigInfo -XmlData $xmlData
-
-    # Validate that Display Level is set to None for silent installation
-    if ($configInfo.Display_Level -ne "None") {
-        Write-LogHost ("Warning: Office installation is not configured for silent deployment") -ForegroundColor Red -Severity 3 -Component $LogID
-        Write-LogHost ("Current Display Level: {0}" -f ($configInfo.Display_Level ?? "Not specified")) -ForegroundColor Yellow -Severity 2 -Component $LogID
-        Write-Host ("  1. Go to https://config.office.com") -ForegroundColor Yellow
-        Write-Host ("  2. Load your existing configuration") -ForegroundColor Yellow
-        Write-Host ("  3. Under 'Installation preferences', toggle OFF 'Show installation to user'") -ForegroundColor Yellow
-        Write-Host ("  4. This will set Display Level='None' for automated deployment") -ForegroundColor Yellow
-        Write-Host ("  5. Export and use the updated XML configuration") -ForegroundColor Yellow
-    
-        throw "Office XML configuration error: Display Level must be set to 'None' for silent installation"
-    }
-
-    Write-LogHost ("Display Level validation passed: Silent installation configured") -ForegroundColor Green -Component $LogID
-
     # Your existing display code continues here...
     Write-LogHost ("Current XML Configuration:") -ForegroundColor Green -Component $LogID
     
@@ -2054,7 +2035,7 @@ function Invoke-Main {
         foreach ($file in $actualFiles) {
             $description = switch ($file.Name) {
                 "setup.exe" { "setup.exe" }
-                "Configuration.xml" { "Configuration.xml (with validated/updated version)" }
+                $OutputConfigName { "$OutputConfigName (with validated/updated version)" }
                 "Microsoft.png" { "Microsoft.png (app icon to use for Patch My PC custom app)" }
                 "PatchMyPC_CustomApp_Info.json" { "PatchMyPC_CustomApp_Info.json (custom app metadata)" }
                 "PatchMyPC_CustomApp_Details.txt" { "PatchMyPC_CustomApp_Details.txt (usage instructions)" }
@@ -2197,11 +2178,11 @@ function Invoke-Main {
     
     # Always copy setup.exe and configuration XML to output folder
     $outputSetupPath = Join-Path $sessionPath "setup.exe"
-    $outputConfigPath = Join-Path $sessionPath $xmlFileName
+    $outputConfigPath = Join-Path $sessionPath $OutputConfigName
     Copy-Item -Path $setupPath -Destination $outputSetupPath -Force
     Copy-Item -Path $configCopy -Destination $outputConfigPath -Force
-    
-    Write-LogHost ("Copied setup.exe and $xmlFileName to output folder") -ForegroundColor Green -Component $LogId
+
+    Write-LogHost ("Copied setup.exe and {0} to output folder" -f $OutputConfigName) -ForegroundColor Green -Component $LogId
 
     # Zip creation logic
     if (-not $NoZip) {
@@ -2296,7 +2277,7 @@ function Invoke-Main {
                 $description = switch ($file.Name) {
                     "Office.zip" { "Office.zip (Office installation files)" }
                     "setup.exe" { "setup.exe" }
-                    "Configuration.xml" { "Configuration.xml" }
+                    $OutputConfigName { "$OutputConfigName" }
                     "PreScript.ps1" { "PreScript.ps1 (zip extraction utility)" }
                     "Microsoft.png" { "Microsoft.png (app icon for Patch My PC custom app)" }
                     "PatchMyPC_CustomApp_Info.json" { "PatchMyPC_CustomApp_Info.json (custom app metadata)" }
@@ -2320,7 +2301,7 @@ function Invoke-Main {
             # Generate Patch My PC Cloud custom app information
             Write-Host ""
             Write-LogHost ("Generating Patch My PC custom app information...") -Component $LogId
-            $customApp = New-PatchMyPCCustomApp -OutputPath $sessionPath -XmlFileName $xmlFileName -IconUrl $OfficeIconUrl -LogID $LogID
+            $customApp = New-PatchMyPCCustomApp -OutputPath $sessionPath -XmlFileName $OutputConfigName -IconUrl $OfficeIconUrl -LogID $LogID
     
             if ($customApp) {
 
@@ -2377,7 +2358,7 @@ function Invoke-Main {
         foreach ($file in $actualFiles) {
             $description = switch ($file.Name) {
                 "setup.exe" { "setup.exe" }
-                "Configuration.xml" { "Configuration.xml" }
+                $OutputConfigName { "$OutputConfigName" }
                 "Microsoft.png" { "Microsoft.png (app icon for Patch My PC custom app)" }
                 "PatchMyPC_CustomApp_Info.json" { "PatchMyPC_CustomApp_Info.json (custom app metadata)" }
                 "PatchMyPC_CustomApp_Details.txt" { "PatchMyPC_CustomApp_Details.txt (usage instructions)" }
@@ -2411,7 +2392,7 @@ function Invoke-Main {
         # Generate Patch My PC Cloud custom app information
         Write-Host ""
         Write-LogHost ("Generating Patch My PC custom app information...") -Component $LogId
-        $customApp = New-PatchMyPCCustomApp -OutputPath $sessionPath -XmlFileName $xmlFileName -IconUrl $OfficeIconUrl -LogID $LogId
+        $customApp = New-PatchMyPCCustomApp -OutputPath $sessionPath -XmlFileName $OutputConfigName -IconUrl $OfficeIconUrl -LogID $LogId
     
         if ($customApp) {
 
