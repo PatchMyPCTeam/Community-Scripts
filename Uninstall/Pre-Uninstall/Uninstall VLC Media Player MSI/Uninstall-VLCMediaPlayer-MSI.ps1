@@ -495,10 +495,10 @@ $GetInstalledSoftwareSplat = @{
     DisplayName   = $DisplayName
     Architecture  = $Architecture
     HivesToSearch = $HivesToSearch
+    WindowsInstaller = 1
 }
 
 switch ($PSBoundParameters.Keys) {
-    'WindowsInstaller'   { $GetInstalledSoftwareSplat['WindowsInstaller'] = $WindowsInstaller }
     'SystemComponent'    { $GetInstalledSoftwareSplat['SystemComponent'] = $SystemComponent }
     'VersionLessThan'    { $GetInstalledSoftwareSplat['VersionLessThan'] = $VersionLessThan }
     'VersionEqualTo'     { $GetInstalledSoftwareSplat['VersionEqualTo'] = $VersionEqualTo }
