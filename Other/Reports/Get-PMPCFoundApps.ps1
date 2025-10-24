@@ -3,7 +3,7 @@
 This script downloads application inventory data from Microsoft Graph, matches it against a list of supported products from Patch My PC, and outputs the results in specified formats (CSV or JSON).
 
 Created on:   2024-10-04
-Updated On:   2024-10-06
+Updated On:   2025-10-24
 Created by:   Ben Whitmore @PatchMyPC
 Filename:     Get-PMPCFoundApps.ps1
 
@@ -16,6 +16,10 @@ The script performs the following tasks:
 4. Matches applications against supported products based on specified inclusion and exclusion patterns.
 5. Outputs matched and unmatched application results to specified file formats.
 6. Calculates the ROI based on matched applications and device counts.
+
+By default, the script writes a summary table to the console showing each matched product and the number of instances found.  
+If you would like to see additional detail (such as the matched name/version patterns and the specific app names/versions detected), run the script with the **-DetailedOutput** switch.
+The console gets busy! It's best to run the terminal window full screen to see the detailed output properly.
 
 Requires the following modules:
 - Microsoft.Graph.Authentication
@@ -131,6 +135,9 @@ An array of prefixes to ignore when cleaning application names. Default is an em
 .PARAMETER DisplayNameHasNoSpaces
 A boolean value to indicate whether the display name of the application has no spaces. Default is $false.
 
+.PARAMETER DetailedOutput
+A switch to indicate whether to include detailed output in the results. Default is $false.
+
 .EXAMPLE
 .\Get-PMPCFoundApps.ps1
 
@@ -208,7 +215,8 @@ param (
     [ValidateRange(0.01, 100)]
     [double]$ROI_Quote2_Device = 3.5,
     [string[]]$IgnorePrefixes = @(),
-    [switch]$DisplayNameHasNoSpaces = $false
+    [switch]$DisplayNameHasNoSpaces = $false,
+    [switch]$DetailedOutput = $false
 )
 
 
@@ -462,46 +470,46 @@ Function Find-Applications {
                         }
                     }
                 
-                if ($cleanAppName -like $likeIncludePattern) {
+                    if ($cleanAppName -like $likeIncludePattern) {
 
-                    # Check exclusion patterns
-                    $sqlSearchExcludeMatch = -not [string]::IsNullOrWhiteSpace($sqlSearchExcludePattern) -and ($appName -like ($sqlSearchExcludePattern -replace '\*', '*' -replace '\%', '*'))
-                    $excludeMatch = -not [string]::IsNullOrWhiteSpace($excludePattern) -and ($appName -like ($excludePattern -replace '\*', '*' -replace '\%', '*'))
+                        # Check exclusion patterns
+                        $sqlSearchExcludeMatch = -not [string]::IsNullOrWhiteSpace($sqlSearchExcludePattern) -and ($appName -like ($sqlSearchExcludePattern -replace '\*', '*' -replace '\%', '*'))
+                        $excludeMatch = -not [string]::IsNullOrWhiteSpace($excludePattern) -and ($appName -like ($excludePattern -replace '\*', '*' -replace '\%', '*'))
 
-                    # If the application name matches and is not excluded
-                    if (-not ($sqlSearchExcludeMatch -or $excludeMatch)) {
+                        # If the application name matches and is not excluded
+                        if (-not ($sqlSearchExcludeMatch -or $excludeMatch)) {
 
-                        # Track individual matches for CSV/JSON
-                        $matchedOnNamePattern = $sqlSearchIncludePattern
-                        $matchedOnVersionPattern = $null
+                            # Track individual matches for CSV/JSON
+                            $matchedOnNamePattern = $sqlSearchIncludePattern
+                            $matchedOnVersionPattern = $null
 
-                        # Check SQLSearchVersionInclude only if it exists and after confirming name match
-                        if (-not [string]::IsNullOrWhiteSpace($sqlSearchVersionIncludePattern)) {
+                            # Check SQLSearchVersionInclude only if it exists and after confirming name match
+                            if (-not [string]::IsNullOrWhiteSpace($sqlSearchVersionIncludePattern)) {
 
-                            # Replace wildcards in the version pattern
-                            $likeVersionPattern = $sqlSearchVersionIncludePattern -replace '\*', '*' -replace '\%', '*'
+                                # Replace wildcards in the version pattern
+                                $likeVersionPattern = $sqlSearchVersionIncludePattern -replace '\*', '*' -replace '\%', '*'
                             
-                            # Perform version comparison
-                            if ($appVersion -like $likeVersionPattern) {
-                                $matchedOnVersionPattern = $sqlSearchVersionIncludePattern
+                                # Perform version comparison
+                                if ($appVersion -like $likeVersionPattern) {
+                                    $matchedOnVersionPattern = $sqlSearchVersionIncludePattern
+                                }
                             }
-                        }
 
-                        $matchedAppDetail = [pscustomobject]@{
-                            DeviceName           = if ($app.PSObject.Properties['DeviceName']) { $app.DeviceName } else { $null }
-                            MatchedAppInvName    = $appName
-                            MatchedAppInvVersion = $appVersion
-                            MatchedPMPCProduct   = $product.Name
-                            MatchedPMPCProductId = $product.Id
-                            MatchedOnName        = $matchedOnNamePattern
-                            MatchedOnVersion     = $matchedOnVersionPattern
-                        }
+                            $matchedAppDetail = [pscustomobject]@{
+                                DeviceName           = if ($app.PSObject.Properties['DeviceName']) { $app.DeviceName } else { $null }
+                                MatchedAppInvName    = $appName
+                                MatchedAppInvVersion = $appVersion
+                                MatchedPMPCProduct   = $product.Name
+                                MatchedPMPCProductId = $product.Id
+                                MatchedOnName        = $matchedOnNamePattern
+                                MatchedOnVersion     = $matchedOnVersionPattern
+                            }
 
-                        $detailedMatchedApplications += $matchedAppDetail
-                        $isMatched = $true
+                            $detailedMatchedApplications += $matchedAppDetail
+                            $isMatched = $true
+                        }
                     }
                 }
-            }
             }
         }
 
@@ -647,25 +655,17 @@ $existingDataFile = Get-ChildItem -Path $SavePath -Filter $searchPattern | Sort-
 $reuseExistingData = $false
 
 if ($UseExistingAppReportData -and $existingDataFile) {
-    $fileCreationDate = (Get-Item $existingDataFile.FullName).CreationTime
-    $currentDate = Get-Date
-
-    if ($fileCreationDate.Date -eq $currentDate.Date) {
-        $reuseExistingData = $true
-        Write-Host ("Using existing {0} inventory data as specified by UseExistingAppInvData parameter." -f $ReportingEndpointReportName) -ForegroundColor Green
-    }
-    else {
-        Write-Host ("Existing {0} inventory data is not from today. Will download fresh data." -f $ReportingEndpointReportName) -ForegroundColor Yellow
-    }
+    $reuseExistingData = $true
 }
-elseif ($existingDataFile) {
-    $fileCreationDate = (Get-Item $existingDataFile.FullName).CreationTime
-    $currentDate = Get-Date
-
-    if ($fileCreationDate.Date -eq $currentDate.Date) {
-        $reuseChoice = Read-Host ("The {0} inventory data file '{1}' was generated today. Do you want to reuse this data? (y/n)" -f $ReportingEndpointReportName, $existingDataFile.Name)
-        $reuseExistingData = ($reuseChoice -eq 'y')
-    }
+elseif (-not $UseExistingAppReportData -and $existingDataFile) {
+    $fileInfo = Get-Item $existingDataFile.FullName
+    $reuseChoice = Read-Host (
+        "The {0} inventory data file '{1}' was created on {2}. Reuse it? (y/n)" -f `
+            $ReportingEndpointReportName, `
+            $existingDataFile.Name, `
+            $fileInfo.CreationTime.ToString("yyyy-MM-dd HH:mm")
+    )
+    $reuseExistingData = ($reuseChoice -eq 'y')
 }
 
 if ($reuseExistingData) {
@@ -681,7 +681,7 @@ if ($reuseExistingData) {
 }
 
 # Do we need to connect to Graph to get any data?
-if (-not $reuseExistingData -or ($reuseExistingData -and $ReportingEndpointReportName -eq 'AppInvAggregate')) {
+if (-not $reuseExistingData) {
 
     # Prepare the report request and endpoint and connect to Graph
     Write-Host "Connecting to Graph..." -ForegroundColor Cyan
@@ -1021,21 +1021,25 @@ $instanceCount = $matchedApps | Group-Object MatchedPMPCProduct | ForEach-Object
 # Display the table with the required columns in the desired order
 if ($instanceCount.Count -gt 0) {
     Write-Host ("Found {0} apps in {1} that matched PMPC products" -f $instanceCount.Count, $ReportingEndpointReportName) -ForegroundColor Green
-    $instanceCount | Format-Table -Property MatchedPMPCProduct, 
-    @{Name = 'TotalInstances'; Expression = { [string]$_.TotalInstances }; Width = 15 }, 
-    @{Name = 'MatchedOnName'; Expression = { $_.MatchedOnName }; Width = 25 },
-    @{Name = 'MatchedOnVersion'; Expression = { $_.MatchedOnVersion }; Width = 25 },
-    @{Name = 'MatchedAppInvNames'; Expression = { 
-            if ($_.MatchedAppInvNames.Length -gt 55) { 
-                $_.MatchedAppInvNames.Substring(0, 52) + '...' 
-            }
-            else { 
-                $_.MatchedAppInvNames 
-            } 
-        }; Width = 50 
-    },
-    @{Name = 'TotalVersions'; Expression = { [string]$_.TotalVersionCount }; Width = 15 }, 
-    @{Name = 'MatchedAppInvVersions'; Expression = { $_.MatchedAppInvVersions }; Width = 25 } -AutoSize
+
+    if ($DetailedOutput) {
+
+        # Detailed output with all matching columns
+        $instanceCount | Format-Table -AutoSize -Property `
+            MatchedPMPCProduct,
+        @{Name = 'TotalInstances'; Expression = { [string]$_.TotalInstances } },
+        @{Name = 'MatchedOnName'; Expression = { $_.MatchedOnName } },
+        @{Name = 'MatchedOnVersion'; Expression = { $_.MatchedOnVersion } },
+        @{Name = 'MatchedAppInvNames'; Expression = { $_.MatchedAppInvNames } },
+        @{Name = 'TotalVersions'; Expression = { [string]$_.TotalVersionCount } },
+        @{Name = 'MatchedAppInvVersions'; Expression = { $_.MatchedAppInvVersions } }
+    }
+    else {
+        # Default summary output
+        $instanceCount | Format-Table -AutoSize -Property `
+            MatchedPMPCProduct,
+        @{Name = 'TotalInstances'; Expression = { [string]$_.TotalInstances } }
+    }
 }
 
 # Step 5: Calculate ROI
