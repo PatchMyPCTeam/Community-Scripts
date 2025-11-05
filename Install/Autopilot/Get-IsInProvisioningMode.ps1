@@ -27,7 +27,7 @@ You assume all risks and responsibilities associated with its usage
 #>
 
 # Enable the script to test an undocumented registry value for high confidence testing
-$betaHighConfidenceTesting -eq $false
+$betaHighConfidenceTesting = $false
 
 # Create a PSCustomObject array to store the registry tests
 $registryTests = @()
