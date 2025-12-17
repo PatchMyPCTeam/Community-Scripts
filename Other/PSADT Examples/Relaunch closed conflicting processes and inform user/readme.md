@@ -31,7 +31,10 @@ As mentioned in the introduction, we will be using a couple examples customers f
 
 ### Example Scenario
 
-In this example, we will leverage some PSADT v4 functions in pre and post scripts. When PSADT functions are referenced, on the client side the same session persists between pre and post scripts. This means we can leverage PSADT functionality between pre and post scripts:
+In this example, we will leverage some PSADT v4 functions in pre and post scripts. When PSADT functions are referenced, on the client side the same session persists between pre and post scripts. This means we can leverage PSADT functionality between pre and post scripts.
+
+You can reuse these scripts as they are without a need to customize them. The information for conflicting processes or app name is taken from `package.xml`, which is a file that contains details about the win32 app created by the Patch My PC Cloud Portal.
+This file exists in every win32 app created using the Cloud Portal, and is specific to each application.
 
 - **Pre-Script**
   - `Get-ADTRunningProcesses` to determine if the process is running. We will put this into a variable.
@@ -45,8 +48,6 @@ In this example, we will leverage some PSADT v4 functions in pre and post script
 ## Scripts Used in This Example
 
 ### Pre-script
-
-You can reuse these scripts as they are without a need to customize them. The information for conflicting processes or app name is taken from `package.xml`, which is a file that contains details about the win32 app created by the Patch My PC Cloud Portal.
 
 **Script Location:** [`Scripts/prescript.ps1`](Scripts/prescript.ps1)
 
