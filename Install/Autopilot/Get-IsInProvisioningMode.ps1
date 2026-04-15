@@ -27,65 +27,67 @@ You assume all risks and responsibilities associated with its usage
 #>
 
 # Enable the script to test an undocumented registry value for high confidence testing
-$betaHighConfidenceTesting -eq $false
+$betaHighConfidenceTesting = $false
+
+$logFile = Join-Path $env:TEMP "Get-IsInProvisioningMode_$(Get-Date -Format 'yyyyMMdd_HHmmss').json"
 
 # Create a PSCustomObject array to store the registry tests
 $registryTests = @()
 
 $registryTests += @{
-  TestName                  = 'Reg_ProvisioningAgentStatus'
-  TestPath                  = 'HKLM\SOFTWARE\Microsoft\Provisioning\Agent'
-  TestValueName             = 'CurrentEvent'
-  ProvisioningFinishedValue = @('0x5')
+  TestName              = 'Reg_ProvisioningAgentStatus'
+  TestPath              = 'HKLM\SOFTWARE\Microsoft\Provisioning\Agent'
+  TestValueName         = 'CurrentEvent'
+  ProvisioningModeValue = @('0x5')
 }
 
 $registryTests += @{
-  TestName                  = 'Reg_AutopilotDeviceSetupPhase'
-  TestPath                  = 'HKLM\SOFTWARE\Microsoft\Windows\Autopilot\EnrollmentStatusTracking\Device\Setup'
-  TestValueName             = 'HasProvisioningCompleted'
-  ProvisioningFinishedValue = @('0xffffffff')
+  TestName              = 'Reg_AutopilotDeviceSetupPhase'
+  TestPath              = 'HKLM\SOFTWARE\Microsoft\Windows\Autopilot\EnrollmentStatusTracking\Device\Setup'
+  TestValueName         = 'HasProvisioningCompleted'
+  ProvisioningModeValue = @('0xffffffff')
 }
 
 $registryTests += @{
-  TestName                  = 'Reg_AutopilotAccountSetupPhase'
-  TestPath                  = 'HKLM\SOFTWARE\Microsoft\Windows\Autopilot\EnrollmentStatusTracking\{0}\Setup' -f '{^S-1-12-1-(\d+-)+\d+$}'
-  TestValueName             = 'HasProvisioningCompleted'
-  ProvisioningFinishedValue = @('0xffffffff')
+  TestName              = 'Reg_AutopilotAccountSetupPhase'
+  TestPath              = 'HKLM\SOFTWARE\Microsoft\Windows\Autopilot\EnrollmentStatusTracking\{0}\Setup' -f '{^S-1-12-1-(\d+-)+\d+$}'
+  TestValueName         = 'HasProvisioningCompleted'
+  ProvisioningModeValue = @('0xffffffff')
 }
 
 $registryTests += @{
-  TestName                  = 'Reg_DevicePreparationCategoryStatus'
-  TestPath                  = 'HKLM\SOFTWARE\Microsoft\Provisioning\AutopilotSettings'
-  TestValueName             = 'DevicePreparationCategory.Status'
-  TestJsonValue             = 'categoryState'  
-  ProvisioningFinishedValue = @('succeeded')
+  TestName              = 'Reg_DevicePreparationCategoryStatus'
+  TestPath              = 'HKLM\SOFTWARE\Microsoft\Provisioning\AutopilotSettings'
+  TestValueName         = 'DevicePreparationCategory.Status'
+  TestJsonValue         = 'categoryState'  
+  ProvisioningModeValue = @('succeeded')
 }
 
 $registryTests += @{
-  TestName                  = 'Reg_DeviceSetupCategoryStatus'
-  TestPath                  = 'HKLM\SOFTWARE\Microsoft\Provisioning\AutopilotSettings'
-  TestValueName             = 'DeviceSetupCategory.Status'
-  TestJsonValue             = 'categoryState'  
-  ProvisioningFinishedValue = @('succeeded')
+  TestName              = 'Reg_DeviceSetupCategoryStatus'
+  TestPath              = 'HKLM\SOFTWARE\Microsoft\Provisioning\AutopilotSettings'
+  TestValueName         = 'DeviceSetupCategory.Status'
+  TestJsonValue         = 'categoryState'  
+  ProvisioningModeValue = @('succeeded')
 }
 
 $registryTests += @{
-  TestName                  = 'Reg_AccountSetupCategoryStatus'
-  TestPath                  = 'HKLM\SOFTWARE\Microsoft\Provisioning\AutopilotSettings'
-  TestValueName             = 'AccountSetupCategory.Status'
-  TestJsonValue             = 'categoryState'  
-  ProvisioningFinishedValue = @('succeeded', 'notStarted')
+  TestName              = 'Reg_AccountSetupCategoryStatus'
+  TestPath              = 'HKLM\SOFTWARE\Microsoft\Provisioning\AutopilotSettings'
+  TestValueName         = 'AccountSetupCategory.Status'
+  TestJsonValue         = 'categoryState'  
+  ProvisioningModeValue = @('succeeded', 'notStarted')
 }
 
 # Create a PSCustomObject array to store the WMI tests
 $wmiTests = @()
 
 $wmiTests += @{
-  TestName                  = 'Wmi_HasProvisioningCompleted'
-  TestClass                 = 'root\cimv2\mdm\dmmap'
-  TestNamespace             = 'MDM_EnrollmentStatusTracking_Setup01'
-  TestValueName             = 'HasProvisioningCompleted'
-  ProvisioningFinishedValue = @($true)
+  TestName              = 'Wmi_HasProvisioningCompleted'
+  TestClass             = 'root\cimv2\mdm\dmmap'
+  TestNamespace         = 'MDM_EnrollmentStatusTracking_Setup01'
+  TestValueName         = 'HasProvisioningCompleted'
+  ProvisioningModeValue = @($true)
 }
 
 # Set the error action preference to stop the script if an error occurs
@@ -161,8 +163,7 @@ function Get-RegistryTestResults {
     [string]$TestName,
     [string]$TestPath,
     [string]$TestValueName,
-    [object]$ProvisioningFinishedValue,
-    [Parameter(Mandatory = $false)]
+    [object]$ProvisioningModeValue,
     [string]$TestJsonValue
   )
 
@@ -172,7 +173,7 @@ function Get-RegistryTestResults {
   # Initialize the result object
   $result = [PSCustomObject]@{
     TestName   = $TestName
-    TestValue  = $ProvisioningFinishedValue
+    TestValue  = $ProvisioningModeValue
     TestResult = $null
   }
 
@@ -191,7 +192,7 @@ function Get-RegistryTestResults {
           $value = ('0x{0:X}' -f $value).ToLower()
         }
         
-        if ($value -in $ProvisioningFinishedValue) {
+        if ($value -in $ProvisioningModeValue) {
           $result.TestResult = $value
         }
       }
@@ -230,7 +231,7 @@ function Get-WMITestResults {
     [string]$TestClass,
     [string]$TestNamespace,
     [string]$TestValueName,
-    [object]$ProvisioningFinishedValue
+    [object]$ProvisioningModeValue
   )
 
   # Add the required assembly
@@ -239,7 +240,7 @@ function Get-WMITestResults {
   # Initialize the result object
   $result = [PSCustomObject]@{
     TestName   = $TestName
-    TestValue  = $ProvisioningFinishedValue
+    TestValue  = $ProvisioningModeValue
     TestResult = $false
   }
 
@@ -266,7 +267,7 @@ function Get-WMITestResults {
         foreach ($obj in $queryResults) {
           $hasProvisioningCompleted = $obj[$TestValueName]
     
-          if ($hasProvisioningCompleted -in $ProvisioningFinishedValue) {
+          if ($hasProvisioningCompleted -in $ProvisioningModeValue) {
             $result.TestResult = $true
           }
           else {
@@ -286,6 +287,13 @@ function Get-WMITestResults {
   return $result
 }
 
+$logData = [ordered]@{
+  Timestamp              = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+  IndividualTestResults  = $null
+  GroupEvaluationResults = $null
+  Conclusion             = $null
+}
+
 # Begin the tests
 $fullResults = @()
 
@@ -302,8 +310,7 @@ foreach ($wmiTest in $wmiTests) {
   $wmiTest.TestGroup = $wmiTest.TestGroup
   $fullResults += $wmiTestResult
 }
-# For testing, uncommen the line below to see the results
-#$fullResults
+$logData.IndividualTestResults = $fullResults
 
 # Evaluate the results
 # Initialize a hashtable with default values for each test group
@@ -338,7 +345,7 @@ if ($DevicePreparationCategoryStatus -eq $true) {
   $groupResults['DevicePreparation'] = 'Complete'
 }
 else { 
-  $groupResults['DevicePreparation'] = 'InComplete'
+  $groupResults['DevicePreparation'] = 'Incomplete'
 }
 
 # Confidence high that ESP has finished the device setup phase after checking the registry values
@@ -346,7 +353,7 @@ if ($DevicePreparationCategoryStatus -eq $true -and $DeviceSetupCategoryStatus -
   $groupResults['DeviceSetup'] = 'Complete'
 }
 else {
-  $groupResults['DeviceSetup'] = 'InComplete'
+  $groupResults['DeviceSetup'] = 'Incomplete'
 }
 
 # Confidence high that ESP has finished the account setup phase after checking the registry values
@@ -357,7 +364,7 @@ elseif ($DevicePreparationCategoryStatus -eq $true -and $DeviceSetupCategoryStat
   $groupResults['AccountSetup'] = 'NotStarted'
 }
 else {
-  $groupResults['AccountSetup'] = 'InComplete'
+  $groupResults['AccountSetup'] = 'Incomplete'
 }
 
 # Further confidence that ESP has finished all phases after checking the WMI values
@@ -381,7 +388,7 @@ if ($DevicePreparationCategoryStatus -eq $true -and $DeviceSetupCategoryStatus -
   $groupResults['ESPAllPhases'] = 'Complete'
 }
 else {
-  $groupResults['ESPAllPhases'] = 'InComplete'
+  $groupResults['ESPAllPhases'] = 'Incomplete'
 }
 
 # Confidence high that ESP has finished all phases, except AccountSetup phase after checking the registry values
@@ -392,31 +399,41 @@ else {
   $groupResults['ESPAllPhasesButAccountSetupPhaseSkipped'] = 'NotRequired'
 }
 
-# For testing, uncommen the line below to see the results
-#$groupResults
+$logData.GroupEvaluationResults = $groupResults
 
 if ($betaHighConfidenceTesting -eq $true) {
 
-  # Conclusion with High confidence that ESP has finished phases using all tests and the undocumented ProvisioningAgentStatus test
-  if ($groupResults['ESPAllPhasesButAccountSetupPhaseSkipped'] -eq 'Complete' -and $groupResults['WmiHasProvisioningCompleted'] -eq 'True' -and $groupResults['ProvisioningAgentStatus'] -eq 'True') {}
+  # Conclusion with high confidence using all tests including the undocumented ProvisioningAgentStatus test
+  if ($groupResults['ESPAllPhases'] -eq 'Complete' -and $groupResults['WmiHasProvisioningCompleted'] -eq 'True' -and $groupResults['ProvisioningAgentStatus'] -eq 'True') {
+    $logData.Conclusion = 'Device is NOT in provisioning mode (all phases complete, high confidence).'
+  }
 
-  # Conclusion with high confidence that ESP has finished phases using all tests and the undocumented ProvisioningAgentStatus test but AccountSetup phases was skipped
+  # Conclusion with high confidence - all phases complete except AccountSetup which was skipped
   elseif ($groupResults['ESPAllPhasesButAccountSetupPhaseSkipped'] -eq 'Complete' -and $groupResults['WmiHasProvisioningCompleted'] -eq 'True' -and $groupResults['ProvisioningAgentStatus'] -eq 'True') {
+    $logData.Conclusion = 'Device is NOT in provisioning mode (all phases complete except AccountSetup, high confidence).'
   }
   else {
+    $logData.Conclusion = 'Device IS in provisioning mode - returning Applicable.'
+    $logData | ConvertTo-Json -Depth 5 -Compress | Out-File -FilePath $logFile -Encoding UTF8
     return 'Applicable'
   }
 }
 else {
 
-  # Conclusion with normal confidence that ESP has finished phases using all tests except the undocumented ProvisioningAgentStatus test
-  if ($groupResults['ESPAllPhases'] -eq 'Complete' -and $groupResults['WmiHasProvisioningCompleted'] -eq 'True') {
+  # Conclusion with normal confidence - all phases complete
+  if ($groupResults['ESPAllPhases'] -eq 'Complete') {
+    $logData.Conclusion = 'Device is NOT in provisioning mode (all phases complete).'
   }
 
-  # Conclusion with high confidence that ESP has finished phases using all tests but AccountSetup phases was skipped and the undocumented ProvisioningAgentStatus test is ignored
-  elseif ($groupResults['ESPAllPhasesButAccountSetupPhaseSkipped'] -eq 'Complete' -and $groupResults['WmiHasProvisioningCompleted'] -eq 'True') {
+  # Conclusion with normal confidence - all phases complete except AccountSetup which was skipped
+  elseif ($groupResults['ESPAllPhasesButAccountSetupPhaseSkipped'] -eq 'Complete') {
+    $logData.Conclusion = 'Device is NOT in provisioning mode (all phases complete except AccountSetup).'
   }
   else {
+    $logData.Conclusion = 'Device IS in provisioning mode - returning Applicable.'
+    $logData | ConvertTo-Json -Depth 5 -Compress | Out-File -FilePath $logFile -Encoding UTF8
     return 'Applicable'
   }
 }
+
+$logData | ConvertTo-Json -Depth 5 -Compress | Out-File -FilePath $logFile -Encoding UTF8
