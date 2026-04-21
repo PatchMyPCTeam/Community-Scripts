@@ -43,7 +43,9 @@ param(
     [string]$appName = "!Test App",
     [string]$appVersion = "1.0.0",
     [string]$appPublisher = "Generic",
-    [string]$appDescription = "Generic test application used for Intune Win32 app creation validation."
+    [string]$appDescription = "Generic test application used for Intune Win32 app creation validation.",
+    [string]$contentPrepToolUrl = "https://github.com/microsoft/Microsoft-Win32-Content-Prep-Tool/raw/master/IntuneWinAppUtil.exe",
+    [int]$maxRetries = 10
 )
 
 #region LOG
