@@ -33,8 +33,10 @@ You assume all risks and responsibilities associated with its usage
 
 param(
     [Parameter(Mandatory)]
+    [ValidatePattern('^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$')]
     [string]$tenantId,
     [Parameter(Mandatory)]
+    [ValidatePattern('^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$')]
     [string]$clientId,
     [Parameter(Mandatory)]
     [string]$clientSecret,
@@ -46,7 +48,7 @@ param(
 
 #region LOG
 $logDateTime = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
-$logPath     = Join-Path $env:TEMP ("New-Win32app-{0}.log" -f $logDateTime)
+$logPath = Join-Path $env:TEMP ("New-Win32app-{0}.log" -f $logDateTime)
  
 function Write-CMTraceLog {
     param(
@@ -63,7 +65,7 @@ function Write-CMTraceLog {
  
     $timeStamp = Get-Date -Format "HH:mm:ss.fff"
     $dateStamp = Get-Date -Format "MM-dd-yyyy"
-    $logEntry  = '<![LOG[{0}]LOG]!><time="{1}+000" date="{2}" component="{3}" context="" type="{4}" thread="" file="">' -f $Message, $timeStamp, $dateStamp, $Component, $Severity
+    $logEntry = '<![LOG[{0}]LOG]!><time="{1}+000" date="{2}" component="{3}" context="" type="{4}" thread="" file="">' -f $Message, $timeStamp, $dateStamp, $Component, $Severity
  
     Add-Content -Path $logPath -Value $logEntry -Encoding UTF8
 }
@@ -121,8 +123,8 @@ function Get-GraphErrorDetail {
  
             if ($parsed.error) {
                 $detail.GraphErrorCode = $parsed.error.code
-                $detail.GraphMessage   = $parsed.error.message
-                $detail.RequestId      = $parsed.error.innerError.'request-id'
+                $detail.GraphMessage = $parsed.error.message
+                $detail.RequestId = $parsed.error.innerError.'request-id'
             }
         }
         catch {
@@ -152,8 +154,8 @@ foreach ($module in @('Microsoft.Graph.Authentication', 'Az.Storage')) {
 #region WORKING FOLDERS
 $workingFolder = Join-Path $env:TEMP "PatchMyPC_TestApp"
 $contentFolder = Join-Path $workingFolder "Content"
-$outputFolder  = Join-Path $workingFolder "Output"
-$toolFolder    = Join-Path $workingFolder "ContentPrepTool"
+$outputFolder = Join-Path $workingFolder "Output"
+$toolFolder = Join-Path $workingFolder "ContentPrepTool"
  
 foreach ($folder in @($workingFolder, $contentFolder, $outputFolder, $toolFolder)) {
     if (Test-Path $folder) {
@@ -173,7 +175,7 @@ try {
  
     #region 1. DOWNLOAD WIN32 CONTENT PREP TOOL
     $currentStep = "Download Win32 Content Prep Tool"
-    $toolPath    = Join-Path $toolFolder "IntuneWinAppUtil.exe"
+    $toolPath = Join-Path $toolFolder "IntuneWinAppUtil.exe"
  
     Write-LogAndHost -Message ("Downloading Win32 Content Prep Tool from '{0}'" -f $contentPrepToolUrl) -ForegroundColor Cyan
  
@@ -190,7 +192,7 @@ try {
     #region 2. CREATE TEST APP PAYLOAD
     $currentStep = "Create test app payload"
  
-    $readmePath    = Join-Path $contentFolder "readme.txt"
+    $readmePath = Join-Path $contentFolder "readme.txt"
     $readmeContent = @"
 Patch My PC Test App v{0}
 Publisher  : {1}
@@ -206,13 +208,13 @@ as the detection method. The uninstall script removes it.
     Write-LogAndHost -Message ("Created readme.txt at '{0}'" -f $readmePath) -ForegroundColor Cyan
  
     $installCmdPath = Join-Path $contentFolder "install.cmd"
-    $installCmd     = "@echo off`r`nreg add ""HKLM\SOFTWARE\PatchMyPC\TestApp"" /v ""Version"" /t REG_SZ /d ""{0}"" /f`r`nreg add ""HKLM\SOFTWARE\PatchMyPC\TestApp"" /v ""Publisher"" /t REG_SZ /d ""{1}"" /f`r`nreg add ""HKLM\SOFTWARE\PatchMyPC\TestApp"" /v ""InstalledDate"" /t REG_SZ /d ""%DATE%"" /f`r`nexit 0" -f $appVersion, $appPublisher
+    $installCmd = "@echo off`r`nreg add ""HKLM\SOFTWARE\PatchMyPC\TestApp"" /v ""Version"" /t REG_SZ /d ""{0}"" /f`r`nreg add ""HKLM\SOFTWARE\PatchMyPC\TestApp"" /v ""Publisher"" /t REG_SZ /d ""{1}"" /f`r`nreg add ""HKLM\SOFTWARE\PatchMyPC\TestApp"" /v ""InstalledDate"" /t REG_SZ /d ""%DATE%"" /f`r`nexit 0" -f $appVersion, $appPublisher
  
     [System.IO.File]::WriteAllText($installCmdPath, $installCmd, [System.Text.Encoding]::ASCII)
     Write-LogAndHost -Message ("Created install.cmd at '{0}'" -f $installCmdPath) -ForegroundColor Cyan
  
     $uninstallCmdPath = Join-Path $contentFolder "uninstall.cmd"
-    $uninstallCmd     = "@echo off`r`nreg delete ""HKLM\SOFTWARE\PatchMyPC\TestApp"" /f`r`nexit 0"
+    $uninstallCmd = "@echo off`r`nreg delete ""HKLM\SOFTWARE\PatchMyPC\TestApp"" /f`r`nexit 0"
  
     [System.IO.File]::WriteAllText($uninstallCmdPath, $uninstallCmd, [System.Text.Encoding]::ASCII)
     Write-LogAndHost -Message ("Created uninstall.cmd at '{0}'" -f $uninstallCmdPath) -ForegroundColor Cyan
@@ -261,10 +263,10 @@ as the detection method. The uninstall script removes it.
     New-Item -ItemType Directory -Path $extractPath -Force | Out-Null
     [System.IO.Compression.ZipFile]::ExtractToDirectory($intuneWinPath, $extractPath)
  
-    $metaXml           = [xml](Get-Content (Join-Path $extractPath "IntuneWinPackage\Metadata\Detection.xml"))
+    $metaXml = [xml](Get-Content (Join-Path $extractPath "IntuneWinPackage\Metadata\Detection.xml"))
     $encryptedFilePath = Get-ChildItem (Join-Path $extractPath "IntuneWinPackage\Contents") | Select-Object -First 1 -ExpandProperty FullName
-    $sizeEncrypted     = (Get-Item $encryptedFilePath).Length
-    $sizeUnencrypted   = [int64]$metaXml.ApplicationInfo.UnencryptedContentSize
+    $sizeEncrypted = (Get-Item $encryptedFilePath).Length
+    $sizeUnencrypted = [int64]$metaXml.ApplicationInfo.UnencryptedContentSize
  
     Write-LogAndHost -Message ("Metadata extracted. Encrypted: {0} bytes, Unencrypted: {1} bytes" -f $sizeEncrypted, $sizeUnencrypted) -ForegroundColor Green
  
@@ -284,11 +286,17 @@ as the detection method. The uninstall script removes it.
  
     #region 5. CONNECT TO GRAPH
     $currentStep = "Connect to Microsoft Graph"
+    if ([string]::IsNullOrWhiteSpace($clientSecret)) {
+        throw "clientSecret is empty. Provide a valid client secret."
+    }
+    # Disconnect any existing cached session
+    Write-LogAndHost -Message "Disconnecting any existing Graph session..." -ForegroundColor Cyan
+    Disconnect-MgGraph -ErrorAction SilentlyContinue | Out-Null
  
     Write-LogAndHost -Message "Connecting to Microsoft Graph..." -ForegroundColor Cyan
  
     $secureSecret = ConvertTo-SecureString $clientSecret -AsPlainText -Force
-    $credential   = New-Object System.Management.Automation.PSCredential($clientId, $secureSecret)
+    $credential = New-Object System.Management.Automation.PSCredential($clientId, $secureSecret)
  
     Connect-MgGraph -TenantId $tenantId -ClientSecretCredential $credential -NoWelcome
     Write-LogAndHost -Message "Connected to Microsoft Graph" -ForegroundColor Green
@@ -303,34 +311,34 @@ as the detection method. The uninstall script removes it.
     $detectionScript = 'if ((Get-ItemProperty -Path "HKLM:\SOFTWARE\PatchMyPC\TestApp" -Name "Version" -ErrorAction SilentlyContinue).Version -eq "{0}") {{ Write-Output "Detected" }}' -f $appVersion
  
     $appBody = [ordered]@{
-        "@odata.type"                  = "#microsoft.graph.win32LobApp"
-        displayName                    = $appName
-        description                    = $appDescription
-        publisher                      = $appPublisher
-        displayVersion                 = $appVersion
-        informationUrl                 = "https://learn.microsoft.com/en-us/graph/api/intune-apps-win32lobapp-create"
-        notes                          = "Generic test app - safe to delete"
-        fileName                       = $intuneWinFile.Name
-        setupFilePath                  = "install.cmd"
-        installCommandLine             = "install.cmd"
-        uninstallCommandLine           = "uninstall.cmd"
-        minimumSupportedWindowsRelease = "1607"
-        allowedArchitectures           = "x64,arm64"
-        minimumFreeDiskSpaceInMB       = 1
-        installExperience              = @{
+        "@odata.type"                   = "#microsoft.graph.win32LobApp"
+        displayName                     = $appName
+        description                     = $appDescription
+        publisher                       = $appPublisher
+        displayVersion                  = $appVersion
+        informationUrl                  = "https://learn.microsoft.com/en-us/graph/api/intune-apps-win32lobapp-create"
+        notes                           = "Generic test app - safe to delete"
+        fileName                        = $intuneWinFile.Name
+        setupFilePath                   = "install.cmd"
+        installCommandLine              = "install.cmd"
+        uninstallCommandLine            = "uninstall.cmd"
+        minimumSupportedWindowsRelease  = "1607"
+        allowedArchitectures            = "x64,arm64"
+        minimumFreeDiskSpaceInMB        = 1
+        installExperience               = @{
             "@odata.type"         = "#microsoft.graph.win32LobAppInstallExperience"
             runAsAccount          = "system"
             maxRunTimeInMinutes   = 15
             deviceRestartBehavior = "suppress"
         }
-        returnCodes = @(
-            @{ returnCode = 0;    type = "success" }
+        returnCodes                     = @(
+            @{ returnCode = 0; type = "success" }
             @{ returnCode = 1707; type = "success" }
             @{ returnCode = 3010; type = "softReboot" }
             @{ returnCode = 1641; type = "hardReboot" }
             @{ returnCode = 1618; type = "retry" }
         )
-        rules = @(
+        rules                           = @(
             @{
                 "@odata.type"         = "#microsoft.graph.win32LobAppPowerShellScriptRule"
                 ruleType              = "detection"
@@ -342,7 +350,7 @@ as the detection method. The uninstall script removes it.
         minimumSupportedOperatingSystem = @{ v10_1607 = $true }
     } | ConvertTo-Json -Depth 10 -Compress
  
-    $app   = Invoke-MgGraphRequest -Method POST -Uri "https://graph.microsoft.com/beta/deviceAppManagement/mobileApps" -Body $appBody -ContentType "application/json"
+    $app = Invoke-MgGraphRequest -Method POST -Uri "https://graph.microsoft.com/beta/deviceAppManagement/mobileApps" -Body $appBody -ContentType "application/json"
     $appId = $app.id
  
     Write-LogAndHost -Message ("App record created. App ID: '{0}'" -f $appId) -ForegroundColor Green
@@ -354,7 +362,7 @@ as the detection method. The uninstall script removes it.
  
     Write-LogAndHost -Message ("Creating content version for app '{0}'..." -f $appId) -ForegroundColor Cyan
  
-    $contentVersion   = Invoke-MgGraphRequest -Method POST -Uri ("https://graph.microsoft.com/beta/deviceAppManagement/mobileApps/{0}/microsoft.graph.win32LobApp/contentVersions" -f $appId) -Body "{}" -ContentType "application/json"
+    $contentVersion = Invoke-MgGraphRequest -Method POST -Uri ("https://graph.microsoft.com/beta/deviceAppManagement/mobileApps/{0}/microsoft.graph.win32LobApp/contentVersions" -f $appId) -Body "{}" -ContentType "application/json"
     $contentVersionId = $contentVersion.id
  
     Write-LogAndHost -Message ("Content version created. Version ID: '{0}'" -f $contentVersionId) -ForegroundColor Green
@@ -367,17 +375,17 @@ as the detection method. The uninstall script removes it.
     Write-LogAndHost -Message "Creating file entry..." -ForegroundColor Cyan
  
     $fileBody = [ordered]@{
-        "@odata.type"   = "#microsoft.graph.mobileAppContentFile"
-        name            = $metaXml.ApplicationInfo.FileName
-        size            = $sizeUnencrypted
-        sizeEncrypted   = $sizeEncrypted
-        isDependency    = $false
-        manifest        = $null
+        "@odata.type" = "#microsoft.graph.mobileAppContentFile"
+        name          = $metaXml.ApplicationInfo.FileName
+        size          = $sizeUnencrypted
+        sizeEncrypted = $sizeEncrypted
+        isDependency  = $false
+        manifest      = $null
     } | ConvertTo-Json -Compress
  
     $fileEntry = Invoke-MgGraphRequest -Method POST -Uri ("https://graph.microsoft.com/beta/deviceAppManagement/mobileApps/{0}/microsoft.graph.win32LobApp/contentVersions/{1}/files" -f $appId, $contentVersionId) -Body $fileBody -ContentType "application/json"
-    $fileId    = $fileEntry.id
-    $fileUri   = "https://graph.microsoft.com/beta/deviceAppManagement/mobileApps/{0}/microsoft.graph.win32LobApp/contentVersions/{1}/files/{2}" -f $appId, $contentVersionId, $fileId
+    $fileId = $fileEntry.id
+    $fileUri = "https://graph.microsoft.com/beta/deviceAppManagement/mobileApps/{0}/microsoft.graph.win32LobApp/contentVersions/{1}/files/{2}" -f $appId, $contentVersionId, $fileId
  
     Write-LogAndHost -Message ("File entry created. File ID: '{0}'" -f $fileId) -ForegroundColor Green
  
@@ -409,16 +417,16 @@ as the detection method. The uninstall script removes it.
     #region 10. UPLOAD VIA CloudBlockBlob
     $currentStep = "Upload to Azure Blob Storage"
  
-    $container   = $sasUri.AbsolutePath.Split('/')[1]
-    $blobPath    = $sasUri.AbsolutePath.Substring($container.Length + 2)
-    $blockSize   = 4 * 1024 * 1024
+    $container = $sasUri.AbsolutePath.Split('/')[1]
+    $blobPath = $sasUri.AbsolutePath.Substring($container.Length + 2)
+    $blockSize = 4 * 1024 * 1024
     $totalBlocks = [Math]::Ceiling($sizeEncrypted / $blockSize)
  
     Write-LogAndHost -Message ("Starting upload. Container: '{0}', Blob: '{1}', Blocks: {2}" -f $container, $blobPath, $totalBlocks) -ForegroundColor Cyan
  
     $fileStream = [System.IO.File]::OpenRead($encryptedFilePath)
-    $buffer     = New-Object Byte[] $blockSize
-    $blockIds   = New-Object 'System.Collections.Generic.List[System.String]'
+    $buffer = New-Object Byte[] $blockSize
+    $blockIds = New-Object 'System.Collections.Generic.List[System.String]'
     $blobClient = [Microsoft.Azure.Storage.Blob.CloudBlockBlob]::new($sasUri)
  
     try {
