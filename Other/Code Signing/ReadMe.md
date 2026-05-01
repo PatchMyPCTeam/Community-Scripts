@@ -64,6 +64,22 @@ Each certificate folder may include:
 - A `.cer` file containing the public code-signing certificate
 - A README file with certificate-specific details, where applicable
 
+The repository root also includes `Certificates.zip`, which contains all current code-signing certificates used for Patch My PC Cloud, PSADT, and Patch My PC helper scripts.
+
+## Certificate bundle
+
+A `Certificates.zip` file is also provided in the root of the repository.
+
+This archive contains all current Patch My PC code-signing certificates used for:
+
+- Patch My PC Cloud detection and requirement scripts
+- PSAppDeployToolkit / PSADT-signed content
+- Patch My PC helper scripts used by certain catalog applications
+
+The zip file is intended as a convenient way to download the current `.cer` files without browsing each component folder individually.
+
+> The `Certificates.zip` file contains current certificates only. If you need a certificate for older content that was signed with a previous Patch My PC certificate, use the relevant certificate from the corresponding `Archived` folder.
+
 ## Certificate use cases
 
 ### Intune detection and requirement scripts
