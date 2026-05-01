@@ -2,48 +2,150 @@
 
 ## Overview
 
-These PowerShell scripts import Base64-encoded certificates into the Local Machine Trusted Publisher store. The certificates are required in the Trusted Publisher certificate store if you are enforcing an AllSigned PowerShell execution policy. These scripts are designed to work with Patch My PC Cloud, Patch My PC catalog applications, and PSAppDeployToolkit, ensuring that detection, requirement, and pre/post deployment scripts can run without issues in environments with strict PowerShell execution policies.
+These PowerShell scripts import Patch My PC code-signing certificates into the Local Machine Trusted Publishers certificate store.
 
-## Available Scripts
+The certificates may be required when enforcing an `AllSigned` PowerShell execution policy, enabling script signature checking for Intune Win32 apps, or using application control technologies such as Windows Defender Application Control (WDAC), AppLocker, or similar controls.
 
-There are two scripts available:
+Patch My PC uses separate code-signing certificates for different signed components, including:
 
-> ⚠️**IMPORTANT**  
-> If you're using Patch My PC Cloud and have an `AllSigned` PowerShell execution policy in place, you may need to deploy **both certificates**. One is required for **detection/requirement scripts**, and the other for **pre/post deployment scripts** used with some applications in the Patch My PC catalog.
-  
-- **`Import-PMPCCloudTrustedPublisherCertificate.ps1`**  
-  Installs the certificate used to sign **Intune detection and requirement scripts** for Win32 applications published through Patch My PC Cloud.  
-  This certificate ensures that app detection and requirement logic can run in environments enforcing an `AllSigned` PowerShell execution policy.
+- Intune detection and requirement scripts
+- Patch My PC helper scripts used by certain catalog applications
+- The PSAppDeployToolkit module
 
-- **`Import-PMPCAppsTrustedPublisherCertificate.ps1`**  
-  Installs the certificate used to sign **required and recommended pre/post scripts** for certain applications in the Patch My PC catalog.  
-  These scripts perform tasks like stopping processes, uninstalling older versions, or configuring app behavior during deployment.
-  This certificate ensures that PMPC defined pre/post scripts can run in environments enforcing an `AllSigned` PowerShell execution policy.
+## Repository structure
 
-- **`Import-PSADTTrustedPublisherCertificate.ps1`**  
-  Installs the certificate used to sign the **PSAppDeployToolkit module**.  
-  This certificate ensures that PSAppDeployToolkit scripts can run in environments enforcing an `AllSigned` PowerShell execution policy.
+The code-signing certificate scripts are organized by signed component and certificate generation.
 
-## How the Scripts Work
+```text
+Code Signing/
+├─ Patch My PC Apps/
+│  ├─ Current/
+│  │  ├─ Import-PMPCAppsTrustedPublisherCertificate.ps1
+│  │  ├─ PMPCAppsTrustedPublisherCertificate_HealthScript_Detection.ps1
+│  │  └─ PatchMyPCAppsTrustedPublisherCertificate.cer
+│  └─ Archived/
+│     └─ 2023-2026/
+│        ├─ Import-PMPCAppsTrustedPublisherCertificate.ps1
+│        ├─ PMPCAppsTrustedPublisherCertificate_HealthScript_Detection.ps1
+│        └─ PatchMyPCAppsTrustedPublisherCertificate.cer
+├─ Patch My PC Cloud/
+│  └─ Current/
+│     ├─ Import-PMPCCloudTrustedPublisherCertificate.ps1
+│     ├─ PMPCCloudTrustedPublisherCertificate_HealthScript_Detection.ps1
+│     └─ PatchMyPCCloudTrustedPublisherCertificate.cer
+├─ PSADT/
+│  └─ Current/
+│     ├─ Import-PSADTTrustedPublisherCertificate.ps1
+│     ├─ PSADTTrustedPublisherCertificate_HealthScript_Detection.ps1
+│     └─ PSADTTrustedPublisherCertificate.cer
+└─ ReadMe.md
+```
 
-Both scripts perform the following steps:
+Use the files in the relevant `Current` folder for newly signed Patch My PC content.
 
-1. Convert a Base64-encoded certificate string to a byte array
-2. Create an X509Certificate2 object from the byte array
-3. Open the Trusted Publisher store on the Local Machine with ReadWrite permissions
-4. Check if the certificate already exists in the store
-5. If the certificate does not exist, add the certificate to the store
-6. Handle any errors that occur during the process and provide appropriate output messages
+Use the files in the `Archived` folders only when devices need to continue trusting content signed with a previous Patch My PC certificate.
 
-## Deployment Methods
+## Current and archived certificates
 
-### Method 1: Intune Platform Script or Manual Execution
+Use the scripts and certificate files from the relevant `Current` folder for newly signed Patch My PC content.
 
-You can deploy these scripts as Intune platform scripts or run them manually via PowerShell.
+Archived certificates are retained because customers may still have previously deployed applications, scripts, or modules that were signed with an earlier Patch My PC certificate.
 
-#### Usage
-1. Save the desired script to a `.ps1` file
-2. Deploy as a platform script in Intune, or run manually using PowerShell:
+If you are implementing `AllSigned`, WDAC, AppLocker, or similar controls after applications have already been deployed, some existing deployed content may have been signed with a previous Patch My PC certificate. In that instance, you may also need to deploy the relevant archived certificate from the corresponding `Archived` folder.
+
+Previously signed scripts are timestamped, so they are not expected to fail simply because the signing certificate expires. Archived certificates are provided for environments that still need to trust the signer used for previously signed content.
+
+## Available files
+
+Each certificate folder may include:
+
+- An import script
+- A proactive remediation detection script
+- A `.cer` file containing the public code-signing certificate
+- A README file with certificate-specific details, where applicable
+
+The repository root also includes `Certificates.zip`, which contains all current code-signing certificates used for Patch My PC Cloud, PSADT, and Patch My PC helper scripts.
+
+## Certificate bundle
+
+A `Certificates.zip` file is also provided in the root of the repository.
+
+This archive contains all current Patch My PC code-signing certificates used for:
+
+- Patch My PC Cloud detection and requirement scripts
+- PSAppDeployToolkit / PSADT-signed content
+- Patch My PC helper scripts used by certain catalog applications
+
+The zip file is intended as a convenient way to download the current `.cer` files without browsing each component folder individually.
+
+> The `Certificates.zip` file contains current certificates only. If you need a certificate for older content that was signed with a previous Patch My PC certificate, use the relevant certificate from the corresponding `Archived` folder.
+
+## Certificate use cases
+
+### Intune detection and requirement scripts
+
+**Folder:** `Patch My PC Cloud/Current`  
+**Import script:** `Import-PMPCCloudTrustedPublisherCertificate.ps1`  
+**Detection script:** `PMPCCloudTrustedPublisherCertificate_HealthScript_Detection.ps1`  
+**Certificate file:** `PatchMyPCCloudTrustedPublisherCertificate.cer`
+
+Installs the certificate used to sign Intune detection and requirement scripts for Win32 applications published through Patch My PC Cloud.
+
+This certificate allows Intune detection and requirement scripts to run in environments enforcing an `AllSigned` PowerShell execution policy or other controls that require the signer to be trusted.
+
+### Patch My PC helper scripts
+
+**Folder:** `Patch My PC Apps/Current`  
+**Import script:** `Import-PMPCAppsTrustedPublisherCertificate.ps1`  
+**Detection script:** `PMPCAppsTrustedPublisherCertificate_HealthScript_Detection.ps1`  
+**Certificate file:** `PatchMyPCAppsTrustedPublisherCertificate.cer`
+
+Installs the certificate used to sign required and recommended pre/post helper scripts for certain applications in the Patch My PC catalog.
+
+These helper scripts perform tasks such as stopping processes, uninstalling older software versions, or configuring application behavior during deployment.
+
+### PSAppDeployToolkit module
+
+**Folder:** `PSADT/Current`  
+**Import script:** `Import-PSADTTrustedPublisherCertificate.ps1`  
+**Detection script:** `PSADTTrustedPublisherCertificate_HealthScript_Detection.ps1`  
+**Certificate file:** `PSADTTrustedPublisherCertificate.cer`
+
+Installs the certificate used to sign the PSAppDeployToolkit module included with deployments that use Modern branding or PSADT-based functionality.
+
+This certificate allows the PSAppDeployToolkit module to be imported successfully in environments that require signed PowerShell content to come from a trusted publisher.
+
+## How the import scripts work
+
+The import scripts perform the following steps:
+
+1. Convert the Base64-encoded certificate string to a byte array.
+2. Create an `X509Certificate2` object from the byte array.
+3. Open the Local Machine Trusted Publishers certificate store with read/write permissions.
+4. Check whether the certificate already exists in the store.
+5. If the certificate does not exist, add it to the store.
+6. Handle any errors and provide output messages.
+
+## How the detection scripts work
+
+The detection scripts are intended for use with Intune remediation scripts.
+
+The detection scripts perform the following steps:
+
+1. Convert the Base64-encoded certificate string to a byte array.
+2. Create an `X509Certificate2` object from the byte array.
+3. Open the Local Machine Trusted Publishers certificate store.
+4. Check whether the certificate already exists in the store.
+5. If the certificate does not exist, exit with code `1` to indicate remediation is required.
+6. If the certificate exists, write output and exit with code `0` to indicate remediation is not required.
+
+## Deployment methods
+
+### Method 1: Intune platform script or manual execution
+
+You can deploy the import scripts as Intune platform scripts or run them manually with PowerShell.
+
+Example:
 
 ```powershell
 .\Import-PMPCCloudTrustedPublisherCertificate.ps1
@@ -51,42 +153,37 @@ You can deploy these scripts as Intune platform scripts or run them manually via
 .\Import-PSADTTrustedPublisherCertificate.ps1
 ```
 
-### Method 2: Proactive Remediation
+When using Intune platform scripts, select the import script that matches the certificate you want to deploy.
 
-#### For the Patch My PC Cloud Certificate
-- **Detection Script**: `PMPCCloudTrustedPublisherCertificate_HealthScript_Detection.ps1`
-- **Remediation Script**: `Import-PMPCCloudTrustedPublisherCertificate.ps1`
+### Method 2: Intune remediation script
 
-#### For the Patch My PC Apps Certificate
-- **Detection Script**: `PMPCAppsTrustedPublisherCertificate_HealthScript_Detection.ps1`
-- **Remediation Script**: `Import-PMPCAppsTrustedPublisherCertificate.ps1`
+Use the detection script and matching import script for the certificate you want to deploy.
 
-#### For the PSAppDeployToolkit Certificate
-- **Detection Script**: `PSADTTrustedPublisherCertificate_HealthScript_Detection.ps1`
-- **Remediation Script**: `Import-PSADTTrustedPublisherCertificate.ps1`
+#### Intune detection and requirement scripts
 
-#### Script Overview
+- **Detection script:** `PMPCCloudTrustedPublisherCertificate_HealthScript_Detection.ps1`
+- **Remediation script:** `Import-PMPCCloudTrustedPublisherCertificate.ps1`
 
-The detection scripts (`PMPCCloudTrustedPublisherCertificate_HealthScript_Detection.ps1`, `PMPCAppsTrustedPublisherCertificate_HealthScript_Detection.ps1`, and `PSADTTrustedPublisherCertificate_HealthScript_Detection.ps1`) perform the following steps:
+#### Patch My PC helper scripts
 
-1. Converts a Base64-encoded certificate string to a byte array
-2. Creates an X509Certificate2 object from the byte array
-3. Opens the Trusted Publisher store on the Local Machine with ReadWrite permissions
-4. Checks if the certificate already exists in the store
-5. If the certificate does not exist, it exits the script with exit code 1 (indicating remediation is required)
-6. If the certificate is already installed, it exits the script with a STD output stream and exit code 0 (indicating remediation is not required)
+- **Detection script:** `PMPCAppsTrustedPublisherCertificate_HealthScript_Detection.ps1`
+- **Remediation script:** `Import-PMPCAppsTrustedPublisherCertificate.ps1`
 
-The remediation scripts (`Import-PMPCCloudTrustedPublisherCertificate.ps1`, `Import-PMPCAppsTrustedPublisherCertificate.ps1`, and `Import-PSADTTrustedPublisherCertificate.ps1`) perform the following steps:
+#### PSAppDeployToolkit module
 
-1. Converts a Base64-encoded certificate string to a byte array
-2. Creates an X509Certificate2 object from the byte array
-3. Opens the Trusted Publisher store on the Local Machine with ReadWrite permissions
-4. Checks if the certificate already exists in the store
-5. If the certificate does not exist, it adds the certificate to the store
-6. Handles any errors that occur during the process and provides appropriate output messages
+- **Detection script:** `PSADTTrustedPublisherCertificate_HealthScript_Detection.ps1`
+- **Remediation script:** `Import-PSADTTrustedPublisherCertificate.ps1`
 
 ## Requirements
 
-- PowerShell execution policy that allows script execution
-- Administrative privileges to modify the Local Machine certificate store
-- Windows PowerShell 5.1 or later
+- Administrative privileges to modify the Local Machine certificate store.
+- Windows PowerShell 5.1 or later.
+- A PowerShell execution policy or application control configuration that allows the import or remediation script itself to run.
+
+## Notes
+
+- Use the `Current` folders for newly signed Patch My PC content.
+- Use the `Archived` folders only when devices need to continue trusting content signed with a previous Patch My PC certificate.
+- The `.cer` files are provided as an alternative way to obtain the public certificate.
+- The import scripts add the selected certificate to the Local Machine Trusted Publishers certificate store.
+- The detection scripts are intended for use with Intune remediation scripts.
