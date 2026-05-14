@@ -1721,9 +1721,26 @@ function Get-OfficeAppName {
         "O365ProPlusEEANoTeamsRetail" { "Microsoft 365 Apps for Enterprise (No Teams)" }
         "O365BusinessRetail" { "Microsoft 365 Apps for Business" }
         "O365BusinessEEANoTeamsRetail" { "Microsoft 365 Apps for Business (No Teams)" }
+        "ProjectPro*2024*" { "Microsoft Project Professional 2024" }
+        "ProjectPro*2021*" { "Microsoft Project Professional 2021" }
+        "ProjectPro*2019*" { "Microsoft Project Professional 2019" }
+        "ProjectPro*" { "Microsoft Project Professional" }
+        "ProjectStd*2024*" { "Microsoft Project Standard 2024" }
+        "ProjectStd*2021*" { "Microsoft Project Standard 2021" }
+        "ProjectStd*2019*" { "Microsoft Project Standard 2019" }
+        "ProjectStd*" { "Microsoft Project Standard" }
+        "VisioPro*2024*" { "Microsoft Visio Professional 2024" }
+        "VisioPro*2021*" { "Microsoft Visio Professional 2021" }
+        "VisioPro*2019*" { "Microsoft Visio Professional 2019" }
+        "VisioPro*" { "Microsoft Visio Professional" }
+        "VisioStd*2024*" { "Microsoft Visio Standard 2024" }
+        "VisioStd*2021*" { "Microsoft Visio Standard 2021" }
+        "VisioStd*2019*" { "Microsoft Visio Standard 2019" }
+        "VisioStd*" { "Microsoft Visio Standard" }
         "*2024*" { "Office 2024 Perpetual Enterprise" }
         "*2021*" { "Office 2021 Perpetual Enterprise" }
         "*2019*" { "Office 2019 Perpetual Enterprise" }
+        default { $Product }
     }
     
     Write-Log ("Mapped Product ID '{0}' to app name '{1}'" -f $Product, $appName) -Component $LogID
