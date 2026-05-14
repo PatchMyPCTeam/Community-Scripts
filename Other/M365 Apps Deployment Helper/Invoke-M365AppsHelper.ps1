@@ -1,7 +1,7 @@
 ﻿<#
 .Synopsis
 Created on:   07/09/2025
-Updated on:   22/02/2025
+Updated on:   14/05/2026
 Created by:   Ben Whitmore@PatchMyPC
 Filename:     Invoke-M365AppsHelper.ps1
 Version:      1.0.2
