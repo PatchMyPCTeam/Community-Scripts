@@ -4,7 +4,7 @@
     This certificate is used to sign the PSAppDeployToolkit module.
 
 .NOTES
-    FileName:    PSAppDeployToolkitTrustedPublisherCertificate_HealthScript_Detection.ps1
+    FileName:    PSADTTrustedPublisherCertificate_HealthScript_Detection.ps1
     Author:      Ben Whitmore
     Date:        15th May 2026
     
