@@ -13,7 +13,7 @@
     The certificate is store in base64 format in the script and is converted to a certificate object before being added to the store.
 
     # The following code was used to import the certificate as a Base64-encoded string
-    $certPath = 'C:\Temp\PmpcScripts\certs\Patch My PC LLC.cer'
+    $certPath = '.\PSAppDeployToolkit.cer'
     $bytes = [System.IO.File]::ReadAllBytes($certPath)
     $base64 = [System.Convert]::ToBase64String($bytes)
 #>
