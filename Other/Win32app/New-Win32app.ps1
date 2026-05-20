@@ -1,11 +1,9 @@
-
-#Requires -Modules Microsoft.Graph.Authentication, Az.Storage
-
 <#
 .Synopsis
 Creates a test Win32 app in Intune using the Graph SDK PowerShell module.
 
 Created on:   21/04/2026
+Updated on:   20/05/2026
 Created by:   Ben Whitmore@PatchMyPC
 Filename:     New-Win32app.ps1
 
