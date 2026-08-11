@@ -2,9 +2,8 @@
 .Synopsis
 Creates a test Win32 app in Intune using the Graph SDK PowerShell module.
 
-Created on:   21/04/2026
-Updated on:   20/05/2026
-Created by:   Ben Whitmore@PatchMyPC
+Created on:   10/082026
+Created by:   Ben Whitmore
 Filename:     New-Win32app.ps1
 
 .Description
@@ -134,7 +133,130 @@ function Get-GraphErrorDetail {
  
     return $detail
 }
- 
+
+function Invoke-IntuneSasRenewal {
+    <#
+    .Description
+    Requests a fresh Azure Storage SAS URI for an in-progress upload by calling the
+    renewUpload action on the file entry, then polls until the renewal succeeds.
+    The blob location (container/path) stays the same - only the SAS token is refreshed -
+    so blocks already staged remain valid. Returns the new azureStorageUri.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FileUri,
+
+        [Parameter(Mandatory = $false)]
+        [int]$MaxRetries = 10
+    )
+
+    Write-LogAndHost -Message "Renewing Azure Storage SAS URI..." -Severity 2
+    Invoke-MgGraphRequest -Method POST -Uri ("{0}/renewUpload" -f $FileUri) -Body "{}" -ContentType "application/json" | Out-Null
+
+    $attempt = 0
+    do {
+        Start-Sleep -Seconds 3
+        $status = Invoke-MgGraphRequest -Method GET -Uri $FileUri
+        $attempt++
+        Write-LogAndHost -Message ("SAS renewal poll attempt {0}/{1}. State: '{2}'" -f $attempt, $MaxRetries, $status.uploadState) -ForegroundColor Cyan
+    } until ($status.uploadState -eq 'azureStorageUriRenewalSuccess' -or $attempt -ge $MaxRetries)
+
+    if ($status.uploadState -ne 'azureStorageUriRenewalSuccess') {
+        throw ("SAS renewal failed after {0} attempts. Final state: '{1}'" -f $MaxRetries, $status.uploadState)
+    }
+
+    Write-LogAndHost -Message "SAS URI renewed successfully" -ForegroundColor Green
+    return $status.azureStorageUri
+}
+
+function New-IntuneBlobClient {
+    <#
+    .Description
+    Builds a CloudBlockBlob from the raw azureStorageUri STRING. The SAS token is passed
+    to StorageCredentials as a string and the blob address is parsed without its query,
+    so the SAS signature is never re-encoded/mangled by [System.Uri] - which is the usual
+    cause of an immediate "Server failed to authenticate the request ... signature" 403.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$AzureStorageUri
+    )
+
+    $qIndex = $AzureStorageUri.IndexOf('?')
+    if ($qIndex -lt 0) {
+        throw "Azure Storage URI does not contain a SAS token."
+    }
+
+    $blobBaseUri = $AzureStorageUri.Substring(0, $qIndex)
+    $sasToken    = $AzureStorageUri.Substring($qIndex + 1)   # SAS token without leading '?'
+
+    $credentials = [Microsoft.Azure.Storage.Auth.StorageCredentials]::new($sasToken)
+    return [Microsoft.Azure.Storage.Blob.CloudBlockBlob]::new([System.Uri]::new($blobBaseUri), $credentials)
+}
+
+function Get-StorageErrorDetail {
+    <#
+    .Description
+    Extracts detail from an Azure Storage failure. The useful information (HTTP status,
+    Azure error code, service request id, extended message) lives on the nested
+    StorageException.RequestInformation, not on the top-level PowerShell wrapper message.
+    Also builds the full inner-exception chain so nothing is lost.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.Management.Automation.ErrorRecord]$ErrorRecord
+    )
+
+    $detail = [ordered]@{
+        ExceptionChain    = $null
+        HttpStatusCode    = $null
+        HttpStatusMessage = $null
+        StorageErrorCode  = $null
+        ExtendedMessage   = $null
+        ServiceRequestId  = $null
+        AdditionalDetails = $null
+        Summary           = $null
+    }
+
+    # Walk the inner-exception chain and locate any StorageException within it
+    $chain = @()
+    $ex = $ErrorRecord.Exception
+    $storageEx = $null
+    while ($ex) {
+        $chain += ("[{0}] {1}" -f $ex.GetType().Name, $ex.Message)
+        if (-not $storageEx -and $ex.GetType().FullName -like '*Storage.StorageException') {
+            $storageEx = $ex
+        }
+        $ex = $ex.InnerException
+    }
+    $detail.ExceptionChain = $chain -join '  -->  '
+
+    if ($storageEx -and $storageEx.RequestInformation) {
+        $ri = $storageEx.RequestInformation
+        $detail.HttpStatusCode    = $ri.HttpStatusCode
+        $detail.HttpStatusMessage = $ri.HttpStatusMessage
+        $detail.ServiceRequestId  = $ri.ServiceRequestID
+
+        if ($ri.ExtendedErrorInformation) {
+            $detail.StorageErrorCode = $ri.ExtendedErrorInformation.ErrorCode
+            $detail.ExtendedMessage  = $ri.ExtendedErrorInformation.ErrorMessage
+            if ($ri.ExtendedErrorInformation.AdditionalDetails -and $ri.ExtendedErrorInformation.AdditionalDetails.Count -gt 0) {
+                $detail.AdditionalDetails = (($ri.ExtendedErrorInformation.AdditionalDetails.GetEnumerator() | ForEach-Object { '{0}={1}' -f $_.Key, $_.Value }) -join '; ')
+            }
+        }
+    }
+
+    $summaryParts = @()
+    if ($detail.HttpStatusCode)   { $summaryParts += ("HTTP {0} {1}" -f [int]$detail.HttpStatusCode, $detail.HttpStatusMessage) }
+    if ($detail.StorageErrorCode) { $summaryParts += ("Code={0}" -f $detail.StorageErrorCode) }
+    if ($detail.ExtendedMessage)  { $summaryParts += $detail.ExtendedMessage }
+    if ($detail.ServiceRequestId) { $summaryParts += ("x-ms-request-id={0}" -f $detail.ServiceRequestId) }
+    if (-not $summaryParts)       { $summaryParts += $ErrorRecord.Exception.Message }
+    $detail.Summary = $summaryParts -join ' | '
+
+    return $detail
+}
+
 #endregion
  
 Write-LogAndHost -Message ("Log started: {0}" -f $logPath) -ForegroundColor Cyan
@@ -409,8 +531,18 @@ as the detection method. The uninstall script removes it.
         throw ("Failed to get SAS URI after {0} attempts. Final state: '{1}'" -f $maxRetries, $fileStatus.uploadState)
     }
  
-    $sasUri = [System.Uri]::new($fileStatus.azureStorageUri)
-    Write-LogAndHost -Message "SAS URI obtained successfully" -ForegroundColor Green
+    $azureStorageUri = $fileStatus.azureStorageUri
+    $sasUri = [System.Uri]::new($azureStorageUri)
+
+    # Track SAS expiry so the upload loop can renew before it lapses
+    $sasExpiry = [datetime]::MaxValue
+    if ($fileStatus.azureStorageUriExpirationDateTime) {
+        $sasExpiry = ([datetime]$fileStatus.azureStorageUriExpirationDateTime).ToUniversalTime()
+        Write-LogAndHost -Message ("SAS URI obtained. Expires (UTC): {0:yyyy-MM-dd HH:mm:ss}" -f $sasExpiry) -ForegroundColor Green
+    }
+    else {
+        Write-LogAndHost -Message "SAS URI obtained successfully" -ForegroundColor Green
+    }
  
     #endregion
  
@@ -427,25 +559,75 @@ as the detection method. The uninstall script removes it.
     $fileStream = [System.IO.File]::OpenRead($encryptedFilePath)
     $buffer = New-Object Byte[] $blockSize
     $blockIds = New-Object 'System.Collections.Generic.List[System.String]'
-    $blobClient = [Microsoft.Azure.Storage.Blob.CloudBlockBlob]::new($sasUri)
+    $blobClient = New-IntuneBlobClient -AzureStorageUri $azureStorageUri
  
     try {
         $i = 0
         while (($bytesRead = $fileStream.Read($buffer, 0, $buffer.Length)) -gt 0) {
             $encodedBlockId = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes([Guid]::NewGuid().ToString()))
             $blockIds.Add($encodedBlockId)
- 
+
             $memStream = New-Object System.IO.MemoryStream
             $memStream.Write($buffer, 0, $bytesRead)
             $memStream.Position = 0
- 
-            $blobClient.PutBlock($encodedBlockId, $memStream, $null)
+
+            # Proactively renew the SAS if it is within 5 minutes of expiry
+            if ((Get-Date).ToUniversalTime().AddMinutes(5) -ge $sasExpiry) {
+                Write-LogAndHost -Message "SAS URI is near expiry - renewing before next block" -Severity 2
+                $azureStorageUri = Invoke-IntuneSasRenewal -FileUri $fileUri -MaxRetries $maxRetries
+                $blobClient = New-IntuneBlobClient -AzureStorageUri $azureStorageUri
+                $refreshed = Invoke-MgGraphRequest -Method GET -Uri $fileUri
+                if ($refreshed.azureStorageUriExpirationDateTime) {
+                    $sasExpiry = ([datetime]$refreshed.azureStorageUriExpirationDateTime).ToUniversalTime()
+                }
+            }
+
+            # Upload the block. Retry with back-off; renew the SAS only if it is at/near
+            # expiry - renewal cannot fix a corrupted signature, so we do not renew blindly.
+            $blockAttempt = 0
+            $blockUploaded = $false
+            do {
+                try {
+                    $memStream.Position = 0
+                    $blobClient.PutBlock($encodedBlockId, $memStream, $null)
+                    $blockUploaded = $true
+                }
+                catch {
+                    $blockAttempt++
+                    $storageErr = Get-StorageErrorDetail -ErrorRecord $_
+                    Write-LogAndHost -Message ("PutBlock failed for block {0} (attempt {1}/4). {2}" -f ($i + 1), $blockAttempt, $storageErr.Summary) -Severity 2
+
+                    if ($blockAttempt -ge 4) {
+                        $memStream.Dispose()
+                        throw ("PutBlock failed for block {0} after {1} attempts. {2}" -f ($i + 1), $blockAttempt, $storageErr.Summary)
+                    }
+
+                    if ((Get-Date).ToUniversalTime().AddMinutes(5) -ge $sasExpiry) {
+                        try {
+                            $azureStorageUri = Invoke-IntuneSasRenewal -FileUri $fileUri -MaxRetries $maxRetries
+                            $blobClient = New-IntuneBlobClient -AzureStorageUri $azureStorageUri
+                            $refreshed = Invoke-MgGraphRequest -Method GET -Uri $fileUri
+                            if ($refreshed.azureStorageUriExpirationDateTime) {
+                                $sasExpiry = ([datetime]$refreshed.azureStorageUriExpirationDateTime).ToUniversalTime()
+                            }
+                        }
+                        catch {
+                            Write-LogAndHost -Message ("SAS renewal attempt failed: {0}" -f $_.Exception.Message) -Severity 2
+                        }
+                    }
+
+                    $backoff = [int][Math]::Min(30, [Math]::Pow(2, $blockAttempt))
+                    Write-LogAndHost -Message ("Retrying block {0} in {1}s..." -f ($i + 1), $backoff) -Severity 2
+                    Start-Sleep -Seconds $backoff
+                }
+            } until ($blockUploaded)
+
             $memStream.Dispose()
- 
+
             $i++
             Write-LogAndHost -Message ("Uploaded block {0} of {1}" -f $i, $totalBlocks) -ForegroundColor Cyan
         }
- 
+
         $blobClient.PutBlockList($blockIds)
         Write-LogAndHost -Message "All blocks committed to Azure Storage successfully" -ForegroundColor Green
     }
@@ -545,8 +727,13 @@ catch {
 
     Write-LogAndHost -Message ("Script failed at step: '{0}'" -f $currentStep) -Severity 3
     $graphError = Get-GraphErrorDetail -ErrorRecord $_
+    $storageError = Get-StorageErrorDetail -ErrorRecord $_
 
     Write-LogAndHost -Message ("Exception     : {0}" -f $graphError.ExceptionMessage) -Severity 3
+
+    if ($storageError.ExceptionChain) {
+        Write-LogAndHost -Message ("Full detail   : {0}" -f $storageError.ExceptionChain) -Severity 3
+    }
  
     if ($graphError.GraphErrorCode) {
         Write-LogAndHost -Message ("Graph code    : {0}" -f $graphError.GraphErrorCode) -Severity 3
@@ -562,6 +749,26 @@ catch {
  
     if ($graphError.RawErrorBody -and -not $graphError.GraphErrorCode) {
         Write-LogAndHost -Message ("Raw error body: {0}" -f $graphError.RawErrorBody) -Severity 3
+    }
+
+    if ($storageError.HttpStatusCode) {
+        Write-LogAndHost -Message ("Storage HTTP  : {0} {1}" -f [int]$storageError.HttpStatusCode, $storageError.HttpStatusMessage) -Severity 3
+    }
+
+    if ($storageError.StorageErrorCode) {
+        Write-LogAndHost -Message ("Storage code  : {0}" -f $storageError.StorageErrorCode) -Severity 3
+    }
+
+    if ($storageError.ExtendedMessage) {
+        Write-LogAndHost -Message ("Storage msg   : {0}" -f $storageError.ExtendedMessage) -Severity 3
+    }
+
+    if ($storageError.ServiceRequestId) {
+        Write-LogAndHost -Message ("x-ms-request-id : {0}" -f $storageError.ServiceRequestId) -Severity 3
+    }
+
+    if ($storageError.AdditionalDetails) {
+        Write-LogAndHost -Message ("Storage detail: {0}" -f $storageError.AdditionalDetails) -Severity 3
     }
  
     Write-LogAndHost -Message ("Log file      : {0}" -f $logPath) -Severity 3

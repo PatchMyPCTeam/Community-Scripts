@@ -287,6 +287,7 @@ Function Request-Report {
     try {
         Write-Host ("Requesting the report for {0}..." -f $reportName) -ForegroundColor Cyan
         $response = Invoke-MgGraphRequest -Uri $reportEndpoint -Method Post -Body $body -ContentType "application/json"
+        Write-Verbose ("Graph POST response: {0}" -f ($response | ConvertTo-Json -Depth 5))
     }
     catch {
         Write-Error ("Failed to post the report {0}. Error: {1}" -f $reportName, $_)
@@ -301,6 +302,7 @@ Function Request-Report {
     while ($reportStatus -ne "completed") {
         try {
             $jobStatusResponse = Invoke-MgGraphRequest -Uri $pollingEndpoint -Method Get
+            Write-Verbose ("Graph GET poll response: {0}" -f ($jobStatusResponse | ConvertTo-Json -Depth 5))
             $reportStatus = $jobStatusResponse.status
 
             # Display the elapsed time, overwriting the same line
@@ -334,6 +336,7 @@ function Get-IntuneDeviceCount {
         # Make the request using Invoke-MgGraphRequest
         Write-Host "Retrieving the number of Windows devices enrolled in Intune as this report does not contain device information..." -ForegroundColor Cyan
         $response = Invoke-MgGraphRequest -Method Get -Uri $uri
+        Write-Verbose ("Graph GET device count response: {0}" -f ($response | ConvertTo-Json -Depth 5))
 
         # Extract the count from the response
         $windowsDeviceCount = $response.'@odata.count'
