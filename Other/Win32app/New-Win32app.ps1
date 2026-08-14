@@ -8,9 +8,9 @@ Filename:     New-Win32app.ps1
 
 .Description
 - Creates a test Win32 app in Intune using the Graph SDK PowerShell module. Downloads the Win32 Content Prep Tool, builds a small .intunewin from a test payload, then uploads and commits to Intune via Graph SDK.
-- Requires Microsoft.Graph.Authentication, Az.Storage PowerShell modules. 
+- Requires Microsoft.Graph.Authentication, Az.Storage PowerShell modules.
 - Logs to console and CMTrace-compatible, log file in TEMP folder. Designed for testing and validation of Win32 app deployment in Intune.
-- Client app used for authentication must have DeviceManagementApps.ReadWrite.All Graph API permission.
+- Client app used for authentication must have DeviceManagementApps.ReadWrite.All Graph API permission (application permission).
 
 ---------------------------------------------------------------------------------
 LEGAL DISCLAIMER
@@ -25,9 +25,22 @@ You assume all risks and responsibilities associated with its usage
 
 .Notes
 - This script is intended for testing and validation purposes only. The created app is a generic test
-- You must provide your Entra ID App Registration details for $tenantId, $clientId, and $clientSecret below before running this script.
+- You must provide your Entra ID App Registration details. Authenticate with EITHER a client secret (-clientSecret)
+  OR a certificate (-certificateThumbprint). The two are mutually exclusive.
+- When using -certificateThumbprint, the certificate (including its private key) must exist in the current
+  user's personal store (Cert:\CurrentUser\My) or the local machine personal store (Cert:\LocalMachine\My).
+  Reading a LocalMachine private key generally requires an elevated (Run as administrator) session.
+
+.Example
+# Authenticate with a client secret
+.\New-Win32app.ps1 -tenantId '00000000-0000-0000-0000-000000000000' -clientId '11111111-1111-1111-1111-111111111111' -clientSecret 'your-secret-here'
+
+.Example
+# Authenticate with a certificate from the personal store
+.\New-Win32app.ps1 -tenantId '00000000-0000-0000-0000-000000000000' -clientId '11111111-1111-1111-1111-111111111111' -certificateThumbprint 'A1B2C3D4E5F6A1B2C3D4E5F6A1B2C3D4E5F6A1B2'
 #>
 
+[CmdletBinding(DefaultParameterSetName = 'ClientSecret')]
 param(
     [Parameter(Mandatory)]
     [ValidatePattern('^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$')]
@@ -35,8 +48,11 @@ param(
     [Parameter(Mandatory)]
     [ValidatePattern('^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$')]
     [string]$clientId,
-    [Parameter(Mandatory)]
+    [Parameter(Mandatory, ParameterSetName = 'ClientSecret')]
     [string]$clientSecret,
+    [Parameter(Mandatory, ParameterSetName = 'Certificate')]
+    [ValidatePattern('^[0-9a-fA-F]{40}$')]
+    [string]$certificateThumbprint,
     [string]$appName = "!Test App",
     [string]$appVersion = "1.0.0",
     [string]$appPublisher = "Generic",
@@ -48,52 +64,52 @@ param(
 #region LOG
 $logDateTime = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
 $logPath = Join-Path $env:TEMP ("New-Win32app-{0}.log" -f $logDateTime)
- 
+
 function Write-CMTraceLog {
     param(
         [Parameter(Mandatory = $true)]
         [string]$Message,
- 
+
         [Parameter(Mandatory = $false)]
         [ValidateSet(1, 2, 3)]
         [int]$Severity = 1,
- 
+
         [Parameter(Mandatory = $false)]
         [string]$Component = "New-Win32app"
     )
- 
+
     $timeStamp = Get-Date -Format "HH:mm:ss.fff"
     $dateStamp = Get-Date -Format "MM-dd-yyyy"
     $logEntry = '<![LOG[{0}]LOG]!><time="{1}+000" date="{2}" component="{3}" context="" type="{4}" thread="" file="">' -f $Message, $timeStamp, $dateStamp, $Component, $Severity
- 
+
     Add-Content -Path $logPath -Value $logEntry -Encoding UTF8
 }
- 
+
 function Write-LogAndHost {
     param(
         [Parameter(Mandatory = $true)]
         [string]$Message,
- 
+
         [Parameter(Mandatory = $false)]
         [ValidateSet(1, 2, 3)]
         [int]$Severity = 1,
- 
+
         [Parameter(Mandatory = $false)]
         [string]$Component = "New-Win32app",
- 
+
         [Parameter(Mandatory = $false)]
         [string]$ForegroundColor = "White"
     )
- 
+
     switch ($Severity) {
         2 { $ForegroundColor = "Yellow" }
         3 { $ForegroundColor = "Red" }
     }
- 
+
     Write-Host $Message -ForegroundColor $ForegroundColor
     Write-CMTraceLog -Message $Message -Severity $Severity -Component $Component
 }
- 
+
 function Get-GraphErrorDetail {
     <#
     .Description
@@ -105,7 +121,7 @@ function Get-GraphErrorDetail {
         [Parameter(Mandatory = $true)]
         [System.Management.Automation.ErrorRecord]$ErrorRecord
     )
- 
+
     $detail = [ordered]@{
         ExceptionMessage = $ErrorRecord.Exception.Message
         GraphErrorCode   = $null
@@ -113,13 +129,13 @@ function Get-GraphErrorDetail {
         RequestId        = $null
         RawErrorBody     = $null
     }
- 
+
     if ($ErrorRecord.ErrorDetails.Message) {
         $detail.RawErrorBody = $ErrorRecord.ErrorDetails.Message
- 
+
         try {
             $parsed = $ErrorRecord.ErrorDetails.Message | ConvertFrom-Json -ErrorAction Stop
- 
+
             if ($parsed.error) {
                 $detail.GraphErrorCode = $parsed.error.code
                 $detail.GraphMessage = $parsed.error.message
@@ -130,7 +146,7 @@ function Get-GraphErrorDetail {
             # JSON parse failed - RawErrorBody already captured above
         }
     }
- 
+
     return $detail
 }
 
@@ -188,7 +204,7 @@ function New-IntuneBlobClient {
     }
 
     $blobBaseUri = $AzureStorageUri.Substring(0, $qIndex)
-    $sasToken    = $AzureStorageUri.Substring($qIndex + 1)   # SAS token without leading '?'
+    $sasToken = $AzureStorageUri.Substring($qIndex + 1)   # SAS token without leading '?'
 
     $credentials = [Microsoft.Azure.Storage.Auth.StorageCredentials]::new($sasToken)
     return [Microsoft.Azure.Storage.Blob.CloudBlockBlob]::new([System.Uri]::new($blobBaseUri), $credentials)
@@ -233,13 +249,13 @@ function Get-StorageErrorDetail {
 
     if ($storageEx -and $storageEx.RequestInformation) {
         $ri = $storageEx.RequestInformation
-        $detail.HttpStatusCode    = $ri.HttpStatusCode
+        $detail.HttpStatusCode = $ri.HttpStatusCode
         $detail.HttpStatusMessage = $ri.HttpStatusMessage
-        $detail.ServiceRequestId  = $ri.ServiceRequestID
+        $detail.ServiceRequestId = $ri.ServiceRequestID
 
         if ($ri.ExtendedErrorInformation) {
             $detail.StorageErrorCode = $ri.ExtendedErrorInformation.ErrorCode
-            $detail.ExtendedMessage  = $ri.ExtendedErrorInformation.ErrorMessage
+            $detail.ExtendedMessage = $ri.ExtendedErrorInformation.ErrorMessage
             if ($ri.ExtendedErrorInformation.AdditionalDetails -and $ri.ExtendedErrorInformation.AdditionalDetails.Count -gt 0) {
                 $detail.AdditionalDetails = (($ri.ExtendedErrorInformation.AdditionalDetails.GetEnumerator() | ForEach-Object { '{0}={1}' -f $_.Key, $_.Value }) -join '; ')
             }
@@ -247,20 +263,80 @@ function Get-StorageErrorDetail {
     }
 
     $summaryParts = @()
-    if ($detail.HttpStatusCode)   { $summaryParts += ("HTTP {0} {1}" -f [int]$detail.HttpStatusCode, $detail.HttpStatusMessage) }
+    if ($detail.HttpStatusCode) { $summaryParts += ("HTTP {0} {1}" -f [int]$detail.HttpStatusCode, $detail.HttpStatusMessage) }
     if ($detail.StorageErrorCode) { $summaryParts += ("Code={0}" -f $detail.StorageErrorCode) }
-    if ($detail.ExtendedMessage)  { $summaryParts += $detail.ExtendedMessage }
+    if ($detail.ExtendedMessage) { $summaryParts += $detail.ExtendedMessage }
     if ($detail.ServiceRequestId) { $summaryParts += ("x-ms-request-id={0}" -f $detail.ServiceRequestId) }
-    if (-not $summaryParts)       { $summaryParts += $ErrorRecord.Exception.Message }
+    if (-not $summaryParts) { $summaryParts += $ErrorRecord.Exception.Message }
     $detail.Summary = $summaryParts -join ' | '
 
     return $detail
 }
 
+function Get-IntuneAuthCertificate {
+    <#
+    .Description
+    Resolves the app-registration authentication certificate from the local certificate
+    stores by thumbprint. Searches the current user's personal store first, then the
+    local machine personal store. Validates that the certificate exists, has an associated
+    private key (required for app-only certificate auth) and has not expired.
+
+    Note: reading a private key from Cert:\LocalMachine\My generally requires the session
+    to be elevated (Run as administrator).
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Thumbprint
+    )
+
+    # Normalise: strip spaces/non-hex that can sneak in when a thumbprint is copied from the MMC
+    $normalisedThumbprint = ($Thumbprint -replace '[^0-9a-fA-F]', '').ToUpperInvariant()
+
+    # Certificate store search order (first match wins):
+    #   1. Cert:\CurrentUser\My   - the personal store of the account running the script.
+    #                               No elevation needed to read the private key. Checked first
+    #                               because interactive/dev runs usually install the cert here.
+    #   2. Cert:\LocalMachine\My  - the machine-wide personal store. Reading its private key
+    #                               generally requires an elevated (Run as administrator) session.
+    #                               Used for service accounts / scheduled tasks / gMSA scenarios.
+    # If the same thumbprint exists in both stores, the CurrentUser copy is used.
+    $certStorePaths = @('Cert:\CurrentUser\My', 'Cert:\LocalMachine\My')
+    $clientCertificate = $null
+
+    foreach ($storePath in $certStorePaths) {
+        $clientCertificate = Get-ChildItem -Path $storePath -ErrorAction SilentlyContinue |
+        Where-Object { $_.Thumbprint -eq $normalisedThumbprint } |
+        Select-Object -First 1
+
+        if ($clientCertificate) {
+            Write-LogAndHost -Message ("Certificate found in '{0}'. Subject: '{1}'. Expires: {2:yyyy-MM-dd}" -f $storePath, $clientCertificate.Subject, $clientCertificate.NotAfter) -ForegroundColor Cyan
+            break
+        }
+    }
+
+    if (-not $clientCertificate) {
+        throw ("Certificate with thumbprint '{0}' was not found in the CurrentUser or LocalMachine personal store (Cert:\CurrentUser\My, Cert:\LocalMachine\My)." -f $normalisedThumbprint)
+    }
+
+    if (-not $clientCertificate.HasPrivateKey) {
+        throw ("Certificate with thumbprint '{0}' was found but has no associated private key. App-only certificate authentication requires the private key (and, for a LocalMachine cert, an elevated session to read it)." -f $normalisedThumbprint)
+    }
+
+    if ($clientCertificate.NotAfter -lt (Get-Date)) {
+        throw ("Certificate with thumbprint '{0}' expired on {1:yyyy-MM-dd}. Renew the certificate before authenticating." -f $normalisedThumbprint, $clientCertificate.NotAfter)
+    }
+
+    if ($clientCertificate.NotBefore -gt (Get-Date)) {
+        throw ("Certificate with thumbprint '{0}' is not yet valid (NotBefore {1:yyyy-MM-dd})." -f $normalisedThumbprint, $clientCertificate.NotBefore)
+    }
+
+    return $clientCertificate
+}
+
 #endregion
- 
+
 Write-LogAndHost -Message ("Log started: {0}" -f $logPath) -ForegroundColor Cyan
- 
+
 #region MODULES
 foreach ($module in @('Microsoft.Graph.Authentication', 'Az.Storage')) {
     if (-not (Get-Module -ListAvailable -Name $module)) {
@@ -270,128 +346,128 @@ foreach ($module in @('Microsoft.Graph.Authentication', 'Az.Storage')) {
     Import-Module $module -Force
     Write-LogAndHost -Message ("Module '{0}' loaded" -f $module) -ForegroundColor Cyan
 }
- 
+
 #endregion
- 
+
 #region WORKING FOLDERS
 $workingFolder = Join-Path $env:TEMP "PatchMyPC_TestApp"
 $contentFolder = Join-Path $workingFolder "Content"
 $outputFolder = Join-Path $workingFolder "Output"
 $toolFolder = Join-Path $workingFolder "ContentPrepTool"
- 
+
 foreach ($folder in @($workingFolder, $contentFolder, $outputFolder, $toolFolder)) {
     if (Test-Path $folder) {
         Remove-Item $folder -Recurse -Force
     }
     New-Item -ItemType Directory -Path $folder -Force | Out-Null
 }
- 
+
 Write-LogAndHost -Message ("Working folder: '{0}'" -f $workingFolder) -ForegroundColor Cyan
- 
+
 #endregion
- 
+
 # Tracks which step we are in so the catch block can report exactly where it failed
 $currentStep = "Initialise"
- 
+
 try {
- 
+
     #region 1. DOWNLOAD WIN32 CONTENT PREP TOOL
     $currentStep = "Download Win32 Content Prep Tool"
     $toolPath = Join-Path $toolFolder "IntuneWinAppUtil.exe"
- 
+
     Write-LogAndHost -Message ("Downloading Win32 Content Prep Tool from '{0}'" -f $contentPrepToolUrl) -ForegroundColor Cyan
- 
+
     Invoke-WebRequest -Uri $contentPrepToolUrl -OutFile $toolPath -UseBasicParsing
- 
+
     if (-not (Test-Path $toolPath)) {
         throw ("Win32 Content Prep Tool download failed. File not found at '{0}'" -f $toolPath)
     }
- 
+
     Write-LogAndHost -Message ("Win32 Content Prep Tool downloaded to '{0}'" -f $toolPath) -ForegroundColor Green
- 
+
     #endregion
- 
+
     #region 2. CREATE TEST APP PAYLOAD
     $currentStep = "Create test app payload"
- 
+
     $readmePath = Join-Path $contentFolder "readme.txt"
     $readmeContent = @"
 Patch My PC Test App v{0}
 Publisher  : {1}
 Created    : {2}
 Description: {3}
- 
+
 This is a generic test application used to validate Win32 app deployment in Intune.
 It does not install any software. The install script writes a registry key that acts
 as the detection method. The uninstall script removes it.
 "@ -f $appVersion, $appPublisher, (Get-Date -Format "yyyy-MM-dd"), $appDescription
- 
+
     [System.IO.File]::WriteAllText($readmePath, $readmeContent, [System.Text.Encoding]::UTF8)
     Write-LogAndHost -Message ("Created readme.txt at '{0}'" -f $readmePath) -ForegroundColor Cyan
- 
+
     $installCmdPath = Join-Path $contentFolder "install.cmd"
     $installCmd = "@echo off`r`nreg add ""HKLM\SOFTWARE\PatchMyPC\TestApp"" /v ""Version"" /t REG_SZ /d ""{0}"" /f`r`nreg add ""HKLM\SOFTWARE\PatchMyPC\TestApp"" /v ""Publisher"" /t REG_SZ /d ""{1}"" /f`r`nreg add ""HKLM\SOFTWARE\PatchMyPC\TestApp"" /v ""InstalledDate"" /t REG_SZ /d ""%DATE%"" /f`r`nexit 0" -f $appVersion, $appPublisher
- 
+
     [System.IO.File]::WriteAllText($installCmdPath, $installCmd, [System.Text.Encoding]::ASCII)
     Write-LogAndHost -Message ("Created install.cmd at '{0}'" -f $installCmdPath) -ForegroundColor Cyan
- 
+
     $uninstallCmdPath = Join-Path $contentFolder "uninstall.cmd"
     $uninstallCmd = "@echo off`r`nreg delete ""HKLM\SOFTWARE\PatchMyPC\TestApp"" /f`r`nexit 0"
- 
+
     [System.IO.File]::WriteAllText($uninstallCmdPath, $uninstallCmd, [System.Text.Encoding]::ASCII)
     Write-LogAndHost -Message ("Created uninstall.cmd at '{0}'" -f $uninstallCmdPath) -ForegroundColor Cyan
- 
+
     #endregion
- 
+
     #region 3. BUILD .intunewin
     $currentStep = "Build .intunewin"
- 
+
     Write-LogAndHost -Message "Building .intunewin file..." -ForegroundColor Cyan
- 
+
     $arguments = @('-s', ('"{0}"' -f $installCmdPath), '-c', ('"{0}"' -f $contentFolder), '-o', ('"{0}"' -f $outputFolder), '-q')
- 
+
     Write-LogAndHost -Message ("Running: '{0} {1}'" -f $toolPath, ($arguments -join ' ')) -ForegroundColor Cyan
- 
+
     $process = Start-Process -FilePath $toolPath -ArgumentList $arguments -Wait -PassThru
- 
+
     if ($process.ExitCode -ne 0) {
         throw ("IntuneWinAppUtil.exe exited with code {0}" -f $process.ExitCode)
     }
- 
+
     $intuneWinFile = Get-ChildItem $outputFolder -Filter "*.intunewin" | Select-Object -First 1
- 
+
     if (-not $intuneWinFile) {
         throw ("No .intunewin file found in '{0}' after running the content prep tool" -f $outputFolder)
     }
- 
+
     $intuneWinPath = $intuneWinFile.FullName
     Write-LogAndHost -Message ("Built .intunewin: '{0}'" -f $intuneWinPath) -ForegroundColor Green
- 
+
     #endregion
- 
+
     #region 4. EXTRACT .intunewin METADATA
     $currentStep = "Extract .intunewin metadata"
- 
+
     Write-LogAndHost -Message "Extracting .intunewin metadata..." -ForegroundColor Cyan
- 
+
     Add-Type -AssemblyName System.IO.Compression.FileSystem
- 
+
     $extractPath = Join-Path $workingFolder "Extract"
- 
+
     if (Test-Path $extractPath) {
         Remove-Item $extractPath -Recurse -Force
     }
- 
+
     New-Item -ItemType Directory -Path $extractPath -Force | Out-Null
     [System.IO.Compression.ZipFile]::ExtractToDirectory($intuneWinPath, $extractPath)
- 
+
     $metaXml = [xml](Get-Content (Join-Path $extractPath "IntuneWinPackage\Metadata\Detection.xml"))
     $encryptedFilePath = Get-ChildItem (Join-Path $extractPath "IntuneWinPackage\Contents") | Select-Object -First 1 -ExpandProperty FullName
     $sizeEncrypted = (Get-Item $encryptedFilePath).Length
     $sizeUnencrypted = [int64]$metaXml.ApplicationInfo.UnencryptedContentSize
- 
+
     Write-LogAndHost -Message ("Metadata extracted. Encrypted: {0} bytes, Unencrypted: {1} bytes" -f $sizeEncrypted, $sizeUnencrypted) -ForegroundColor Green
- 
+
     $encryptionInfo = @{
         encryptionKey        = $metaXml.ApplicationInfo.EncryptionInfo.EncryptionKey
         macKey               = $metaXml.ApplicationInfo.EncryptionInfo.MacKey
@@ -401,37 +477,53 @@ as the detection method. The uninstall script removes it.
         fileDigest           = $metaXml.ApplicationInfo.EncryptionInfo.FileDigest
         fileDigestAlgorithm  = $metaXml.ApplicationInfo.EncryptionInfo.FileDigestAlgorithm
     }
- 
+
     Write-LogAndHost -Message ("Encryption info parsed. Algorithm: '{0}'" -f $encryptionInfo.fileDigestAlgorithm) -ForegroundColor Cyan
- 
+
     #endregion
- 
+
     #region 5. CONNECT TO GRAPH
     $currentStep = "Connect to Microsoft Graph"
-    if ([string]::IsNullOrWhiteSpace($clientSecret)) {
-        throw "clientSecret is empty. Provide a valid client secret."
-    }
+
     # Disconnect any existing cached session
     Write-LogAndHost -Message "Disconnecting any existing Graph session..." -ForegroundColor Cyan
     Disconnect-MgGraph -ErrorAction SilentlyContinue | Out-Null
- 
-    Write-LogAndHost -Message "Connecting to Microsoft Graph..." -ForegroundColor Cyan
- 
-    $secureSecret = ConvertTo-SecureString $clientSecret -AsPlainText -Force
-    $credential = New-Object System.Management.Automation.PSCredential($clientId, $secureSecret)
- 
-    Connect-MgGraph -TenantId $tenantId -ClientSecretCredential $credential -NoWelcome
-    Write-LogAndHost -Message "Connected to Microsoft Graph" -ForegroundColor Green
- 
+
+    if ($PSCmdlet.ParameterSetName -eq 'Certificate') {
+
+        # --- Certificate (app-only) authentication ---
+        Write-LogAndHost -Message ("Connecting to Microsoft Graph using certificate thumbprint '{0}'..." -f $certificateThumbprint) -ForegroundColor Cyan
+
+        $clientCertificate = Get-IntuneAuthCertificate -Thumbprint $certificateThumbprint
+
+        Connect-MgGraph -TenantId $tenantId -ClientId $clientId -Certificate $clientCertificate -NoWelcome
+    }
+    else {
+
+        # --- Client secret authentication ---
+        if ([string]::IsNullOrWhiteSpace($clientSecret)) {
+            throw "clientSecret is empty. Provide a valid client secret."
+        }
+
+        Write-LogAndHost -Message "Connecting to Microsoft Graph using client secret..." -ForegroundColor Cyan
+
+        $secureSecret = ConvertTo-SecureString $clientSecret -AsPlainText -Force
+        $credential = New-Object System.Management.Automation.PSCredential($clientId, $secureSecret)
+
+        Connect-MgGraph -TenantId $tenantId -ClientSecretCredential $credential -NoWelcome
+    }
+
+    Write-LogAndHost -Message ("Connected to Microsoft Graph (auth: {0})" -f $PSCmdlet.ParameterSetName) -ForegroundColor Green
+
     #endregion
- 
+
     #region 6. CREATE APP RECORD
     $currentStep = "Create app record"
- 
+
     Write-LogAndHost -Message ("Creating app record for '{0}'..." -f $appName) -ForegroundColor Cyan
- 
+
     $detectionScript = 'if ((Get-ItemProperty -Path "HKLM:\SOFTWARE\PatchMyPC\TestApp" -Name "Version" -ErrorAction SilentlyContinue).Version -eq "{0}") {{ Write-Output "Detected" }}' -f $appVersion
- 
+
     $appBody = [ordered]@{
         "@odata.type"                   = "#microsoft.graph.win32LobApp"
         displayName                     = $appName
@@ -471,31 +563,31 @@ as the detection method. The uninstall script removes it.
         )
         minimumSupportedOperatingSystem = @{ v10_1607 = $true }
     } | ConvertTo-Json -Depth 10 -Compress
- 
+
     $app = Invoke-MgGraphRequest -Method POST -Uri "https://graph.microsoft.com/beta/deviceAppManagement/mobileApps" -Body $appBody -ContentType "application/json"
     $appId = $app.id
- 
+
     Write-LogAndHost -Message ("App record created. App ID: '{0}'" -f $appId) -ForegroundColor Green
- 
+
     #endregion
- 
+
     #region 7. CREATE CONTENT VERSION
     $currentStep = "Create content version"
- 
+
     Write-LogAndHost -Message ("Creating content version for app '{0}'..." -f $appId) -ForegroundColor Cyan
- 
+
     $contentVersion = Invoke-MgGraphRequest -Method POST -Uri ("https://graph.microsoft.com/beta/deviceAppManagement/mobileApps/{0}/microsoft.graph.win32LobApp/contentVersions" -f $appId) -Body "{}" -ContentType "application/json"
     $contentVersionId = $contentVersion.id
- 
+
     Write-LogAndHost -Message ("Content version created. Version ID: '{0}'" -f $contentVersionId) -ForegroundColor Green
- 
+
     #endregion
- 
+
     #region 8. CREATE FILE ENTRY
     $currentStep = "Create file entry"
- 
+
     Write-LogAndHost -Message "Creating file entry..." -ForegroundColor Cyan
- 
+
     $fileBody = [ordered]@{
         "@odata.type" = "#microsoft.graph.mobileAppContentFile"
         name          = $metaXml.ApplicationInfo.FileName
@@ -504,33 +596,33 @@ as the detection method. The uninstall script removes it.
         isDependency  = $false
         manifest      = $null
     } | ConvertTo-Json -Compress
- 
+
     $fileEntry = Invoke-MgGraphRequest -Method POST -Uri ("https://graph.microsoft.com/beta/deviceAppManagement/mobileApps/{0}/microsoft.graph.win32LobApp/contentVersions/{1}/files" -f $appId, $contentVersionId) -Body $fileBody -ContentType "application/json"
     $fileId = $fileEntry.id
     $fileUri = "https://graph.microsoft.com/beta/deviceAppManagement/mobileApps/{0}/microsoft.graph.win32LobApp/contentVersions/{1}/files/{2}" -f $appId, $contentVersionId, $fileId
- 
+
     Write-LogAndHost -Message ("File entry created. File ID: '{0}'" -f $fileId) -ForegroundColor Green
- 
+
     #endregion
- 
+
     #region 9. POLL FOR SAS URI
     $currentStep = "Poll for SAS URI"
- 
+
     Write-LogAndHost -Message "Polling for SAS URI..." -ForegroundColor Cyan
- 
+
     $attempt = 0
- 
+
     do {
         Start-Sleep -Seconds 3
         $fileStatus = Invoke-MgGraphRequest -Method GET -Uri $fileUri
         $attempt++
         Write-LogAndHost -Message ("SAS URI poll attempt {0}/{1}. State: '{2}'" -f $attempt, $maxRetries, $fileStatus.uploadState) -ForegroundColor Cyan
     } until ($fileStatus.uploadState -eq 'azureStorageUriRequestSuccess' -or $attempt -ge $maxRetries)
- 
+
     if ($fileStatus.uploadState -ne 'azureStorageUriRequestSuccess') {
         throw ("Failed to get SAS URI after {0} attempts. Final state: '{1}'" -f $maxRetries, $fileStatus.uploadState)
     }
- 
+
     $azureStorageUri = $fileStatus.azureStorageUri
     $sasUri = [System.Uri]::new($azureStorageUri)
 
@@ -543,24 +635,24 @@ as the detection method. The uninstall script removes it.
     else {
         Write-LogAndHost -Message "SAS URI obtained successfully" -ForegroundColor Green
     }
- 
+
     #endregion
- 
+
     #region 10. UPLOAD VIA CloudBlockBlob
     $currentStep = "Upload to Azure Blob Storage"
- 
+
     $container = $sasUri.AbsolutePath.Split('/')[1]
     $blobPath = $sasUri.AbsolutePath.Substring($container.Length + 2)
     $blockSize = 4 * 1024 * 1024
     $totalBlocks = [Math]::Ceiling($sizeEncrypted / $blockSize)
- 
+
     Write-LogAndHost -Message ("Starting upload. Container: '{0}', Blob: '{1}', Blocks: {2}" -f $container, $blobPath, $totalBlocks) -ForegroundColor Cyan
- 
+
     $fileStream = [System.IO.File]::OpenRead($encryptedFilePath)
     $buffer = New-Object Byte[] $blockSize
     $blockIds = New-Object 'System.Collections.Generic.List[System.String]'
     $blobClient = New-IntuneBlobClient -AzureStorageUri $azureStorageUri
- 
+
     try {
         $i = 0
         while (($bytesRead = $fileStream.Read($buffer, 0, $buffer.Length)) -gt 0) {
@@ -634,56 +726,56 @@ as the detection method. The uninstall script removes it.
     finally {
         $fileStream.Dispose()
     }
- 
+
     #endregion
- 
+
     #region 11. VERIFY UPLOAD STATE BEFORE COMMIT
     $currentStep = "Verify upload state"
- 
+
     Write-LogAndHost -Message "Verifying upload state before committing..." -ForegroundColor Cyan
- 
+
     $attempt = 0
- 
+
     do {
         Start-Sleep -Seconds 3
         $fileStatus = Invoke-MgGraphRequest -Method GET -Uri $fileUri
         $attempt++
         Write-LogAndHost -Message ("Upload state verification attempt {0}/{1}. State: '{2}'" -f $attempt, $maxRetries, $fileStatus.uploadState) -ForegroundColor Cyan
     } until ($fileStatus.uploadState -eq 'azureStorageUriRequestSuccess' -or $attempt -ge $maxRetries)
- 
+
     if ($fileStatus.uploadState -ne 'azureStorageUriRequestSuccess') {
         throw ("Upload state check failed before commit after {0} attempts. Final state: '{1}'" -f $maxRetries, $fileStatus.uploadState)
     }
- 
+
     Write-LogAndHost -Message ("Upload state confirmed '{0}'. Safe to commit" -f $fileStatus.uploadState) -ForegroundColor Green
- 
+
     #endregion
- 
+
     #region 12. COMMIT THE FILE
     $currentStep = "Commit file"
- 
+
     Write-LogAndHost -Message "Committing file content to Intune..." -ForegroundColor Cyan
- 
+
     $commitBody = @{ fileEncryptionInfo = $encryptionInfo } | ConvertTo-Json -Depth 5 -Compress
- 
+
     Invoke-MgGraphRequest -Method POST -Uri ("{0}/commit" -f $fileUri) -Body $commitBody -ContentType "application/json"
     Write-LogAndHost -Message "Commit request sent successfully" -ForegroundColor Green
- 
+
     #endregion
- 
+
     #region 13. POLL FOR commitFileSuccess
     $currentStep = "Poll for commit completion"
- 
+
     Write-LogAndHost -Message "Polling for commit completion..." -ForegroundColor Cyan
- 
+
     $attempt = 0
     $success = $false
- 
+
     do {
         Start-Sleep -Seconds 5
         $fileStatus = Invoke-MgGraphRequest -Method GET -Uri $fileUri
         $attempt++
- 
+
         if ($fileStatus.uploadState -eq 'commitFileSuccess') {
             $success = $true
             Write-LogAndHost -Message ("Commit successful. State: '{0}'" -f $fileStatus.uploadState) -ForegroundColor Green
@@ -695,32 +787,32 @@ as the detection method. The uninstall script removes it.
             Write-LogAndHost -Message ("Commit poll attempt {0}/{1}. State: '{2}'" -f $attempt, $maxRetries, $fileStatus.uploadState) -Severity 2
         }
     } until ($success -or $attempt -ge $maxRetries)
- 
+
     if (-not $success) {
         throw ("Commit did not complete within {0} attempts. Final state: '{1}'" -f $maxRetries, $fileStatus.uploadState)
     }
- 
+
     #endregion
- 
+
     #region 14. PATCH APP WITH COMMITTED CONTENT VERSION
     $currentStep = "Patch app with committed content version"
- 
+
     Write-LogAndHost -Message ("Updating app '{0}' with committed content version '{1}'..." -f $appId, $contentVersionId) -ForegroundColor Cyan
- 
+
     $patchBody = @{
         "@odata.type"           = "#microsoft.graph.win32LobApp"
         committedContentVersion = $contentVersionId
     } | ConvertTo-Json -Compress
- 
+
     Invoke-MgGraphRequest -Method PATCH -Uri ("https://graph.microsoft.com/beta/deviceAppManagement/mobileApps/{0}" -f $appId) -Body $patchBody -ContentType "application/json"
- 
+
     Write-LogAndHost -Message "Win32 app creation complete" -ForegroundColor Green
     Write-LogAndHost -Message ("App Name : {0}" -f $appName) -ForegroundColor Green
     Write-LogAndHost -Message ("App ID   : {0}" -f $appId) -ForegroundColor Green
     Write-LogAndHost -Message ("Version  : {0}" -f $appVersion) -ForegroundColor Green
     Write-LogAndHost -Message ("Log file : {0}" -f $logPath) -ForegroundColor Green
     Write-LogAndHost -Message ("Intune Admin Center Link : https://intune.microsoft.com/#view/Microsoft_Intune_Apps/SettingsMenu/~/0/appId/{0}" -f $appId) -ForegroundColor Green
- 
+
     #endregion
 }
 catch {
@@ -734,19 +826,19 @@ catch {
     if ($storageError.ExceptionChain) {
         Write-LogAndHost -Message ("Full detail   : {0}" -f $storageError.ExceptionChain) -Severity 3
     }
- 
+
     if ($graphError.GraphErrorCode) {
         Write-LogAndHost -Message ("Graph code    : {0}" -f $graphError.GraphErrorCode) -Severity 3
     }
- 
+
     if ($graphError.GraphMessage) {
         Write-LogAndHost -Message ("Graph message : {0}" -f $graphError.GraphMessage) -Severity 3
     }
- 
+
     if ($graphError.RequestId) {
         Write-LogAndHost -Message ("Request ID    : {0}" -f $graphError.RequestId) -Severity 3
     }
- 
+
     if ($graphError.RawErrorBody -and -not $graphError.GraphErrorCode) {
         Write-LogAndHost -Message ("Raw error body: {0}" -f $graphError.RawErrorBody) -Severity 3
     }
@@ -770,9 +862,9 @@ catch {
     if ($storageError.AdditionalDetails) {
         Write-LogAndHost -Message ("Storage detail: {0}" -f $storageError.AdditionalDetails) -Severity 3
     }
- 
+
     Write-LogAndHost -Message ("Log file      : {0}" -f $logPath) -Severity 3
- 
+
     throw
 }
 finally {
